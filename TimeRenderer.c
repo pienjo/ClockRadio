@@ -8,12 +8,16 @@ static uint8_t __getDigitMask(uint8_t prevDigit, uint8_t currentDigit, int8_t ro
   uint8_t digitToShow = currentDigit;
   if (currentDigit != prevDigit)
     row = row - animationState; // use scrolling
-
-  if (row < 0)
+ 
+  if (row == -1)
+  {
+    return 0; // Seperator line
+  }
+  else if (row < -1)
   {
     // Use prevDigit
     digitToShow = prevDigit;
-    row = row + 7; // wrap around
+    row = row + 8; // wrap around
   }
   // Two rows per byte, lower nybble first.
   uint8_t tworow = font[digitToShow][row/2];
@@ -31,7 +35,6 @@ static void __privateRender()
 {
   for (int i = 0; i < 7; ++i)
   {
-   
     //hours: tens digit from 0-3, space at 4, ones at 5-8
     const uint8_t 
             hiHours =  __getDigitMask(previousHour >> 4, currentHour >> 4, i),
@@ -76,7 +79,7 @@ void TimeRenderer_SetTime(uint8_t hour, uint8_t minutes, _Bool animate)
   currentMinute = (minutes / 10) * 16 + (minutes % 10);
 
   if (animate)
-    animationState = 7;
+    animationState = 8;
   else
   {
     animationState = 0;

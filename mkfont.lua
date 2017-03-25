@@ -19,7 +19,7 @@ for line in fontfile:lines() do
     
     local thisdef = 0 
    
-    for i = begin, begin+4 do
+    for i = begin+4, begin+1,-1 do
       thisdef = thisdef * 2
       if line:byte(i) == 88 then
 	thisdef = thisdef + 1
