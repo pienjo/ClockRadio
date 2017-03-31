@@ -4,9 +4,8 @@
 
 extern uint8_t *panelBitMask;
 
-void InitializePanel(uint8_t numPanels);
+void InitializePanels(uint8_t numPanels);
 void SetBrightness(uint8_t level);
-
-void UpdatePanel();
+void SendRow(uint8_t row, const uint8_t *data);
 
 #endif

@@ -11,7 +11,6 @@ enum MAX7219_registers
   MAX7219_SHUTDOWN    = 0x0c,
 };
 
-uint8_t *panelBitMask = 0;
 static uint8_t nrPanels = 0;
 
 static void MAX7219_WriteAll( uint8_t reg, uint8_t data)
@@ -31,10 +30,8 @@ static void MAX7219_WriteAll( uint8_t reg, uint8_t data)
   PORTB |= _BV(PORTB2);
 }
 
-void InitializePanel(uint8_t numPanels)
+void InitializePanels(uint8_t numPanels)
 {
-  panelBitMask = calloc(numPanels , 8); // 8 bytes per panel
-
   nrPanels = numPanels;
 
   // Configure panels.
@@ -49,23 +46,20 @@ void SetBrightness(uint8_t level)
   MAX7219_WriteAll( MAX7219_INTENSITY  , level);
 }
 
-void UpdatePanel()
+void SendRow(uint8_t row, const uint8_t *data)
 {
-  const uint8_t *p = panelBitMask + nrPanels * 8 - 1;
-  for (uint8_t y = 1; y < 9; ++y)
+  // Clear slave select
+  PORTB &= ~_BV(PORTB2);
+
+  // Panel data is sent in reverse: last byte first.
+  for (int8_t x = nrPanels -1; x >= 0 ; --x)
   {
-    // Clear slave select
-    PORTB &= ~_BV(PORTB2);
-
-    for (uint8_t x = nrPanels; x >0 ; --x)
-    {
-      SPDR = y;
-      while (! (SPSR & _BV(SPIF))) ; // Wait for completion
-      SPDR = *p--;
-      while (! (SPSR & _BV(SPIF))) ; // Wait for completion
-    }
-
-    // Set slave select
-    PORTB |= _BV(PORTB2);
+    SPDR = 8-row;
+    while (! (SPSR & _BV(SPIF))) ; // Wait for completion
+    SPDR = data[x];
+    while (! (SPSR & _BV(SPIF))) ; // Wait for completion
   }
+  // Set slave select
+  PORTB |= _BV(PORTB2);
 }
+

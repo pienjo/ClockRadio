@@ -14,7 +14,7 @@ int main(void)
   // Enable SPI, master mode, 1MHz clock
   SPCR |= _BV(SPE) | _BV(MSTR) | _BV(SPR0);
  
-  InitializePanel(3);
+  InitializePanels(3);
   SetBrightness(1);
 
   uint8_t hours = 12, mins = 34;
