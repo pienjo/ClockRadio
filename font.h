@@ -1,6 +1,6 @@
 #ifndef __FONT_H__
 #define __FONT_H__
-
+#include <avr/pgmspace.h>
 #include <stdint.h>
-extern uint8_t font[10][4];
+extern const uint8_t PROGMEM font[40];
 #endif

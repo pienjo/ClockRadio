@@ -32,6 +32,13 @@ static void MAX7219_WriteAll( uint8_t reg, uint8_t data)
 
 void InitializePanels(uint8_t numPanels)
 {
+  // Set up SPI outputs
+  
+  DDRB |= _BV(PORTB2) | _BV(PORTB3) | _BV(PORTB5);
+
+  // Enable SPI, master mode, 1MHz clock
+  SPCR |= _BV(SPE) | _BV(MSTR) | _BV(SPR0);
+
   nrPanels = numPanels;
 
   // Configure panels.

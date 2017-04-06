@@ -1,7 +1,10 @@
 #include "Panels.h"
+#include "TimeRenderer.h"
 #include "font.h"
+#include "7Segment.h"
 
-static uint8_t previousHour = 0, previousMinute = 0, currentHour = 0, currentMinute = 0, animationState = 0;
+static uint8_t previousHour = 0, previousMinute = 0, currentHour = 0, currentMinute = 0, currentSecond = 0,
+	       animationState = 0;
 
 static uint8_t __getDigitMask(uint8_t prevDigit, uint8_t currentDigit, int8_t row)
 {
@@ -20,7 +23,7 @@ static uint8_t __getDigitMask(uint8_t prevDigit, uint8_t currentDigit, int8_t ro
     row = row + 8; // wrap around
   }
   // Two rows per byte, lower nybble first.
-  uint8_t tworow = font[digitToShow][row/2];
+  uint8_t tworow = pgm_read_byte(font + digitToShow * 4 + row/2);
 
   if (row & 1)
   {
@@ -33,9 +36,17 @@ static uint8_t __getDigitMask(uint8_t prevDigit, uint8_t currentDigit, int8_t ro
 }
 static void __privateRender()
 {
-  uint8_t data[3];
-
-  for (int i = 0; i < 8; ++i)
+  uint8_t data[4]; // Data to be sent to the panels
+  
+  // Pre-compute the data for the 7-segment displays, it needs to be rotated
+  uint8_t segmentDigits[8];
+ 
+  for (uint8_t i = 0; i < 8; ++i)
+    segmentDigits[i] = 0; // space
+  
+  segmentDigits[DIGIT_2] = pgm_read_byte(BCDToSegment + (currentSecond >> 4));
+  segmentDigits[DIGIT_3] = pgm_read_byte(BCDToSegment + (currentSecond & 0xf));
+  for (uint8_t i = 0; i < 8; ++i)
   {
     //hours: tens digit from 0-3, space at 4, ones at 5-8
     const uint8_t 
@@ -56,35 +67,55 @@ static void __privateRender()
     data[1] = (loHours >> 3) | dotMask | (hiMins << 4);
     
     // space at 16, ones digit at 17-21
-    data[2] = (panelBitMask[i * 3 + 2] & 0xe0) | (loMins << 1);
+    data[2] =  (loMins << 1);
+   
+    // Rotate the 7-segment data
+    const uint8_t row_mask = 1<<i;
+
+    data[3] = 0;
+
+    for(uint8_t j = 0, column_mask = 1; j < 7; ++j, column_mask <<= 1)
+      if (segmentDigits[j] & row_mask)
+	data[3] |= column_mask;
     
     SendRow(i, data);
   }
 
 }
 
-void TimeRenderer_Tick()
+bool TimeRenderer_Tick()
 {
   if (animationState)
   {
     animationState--;
     __privateRender();
   }
+
+  return animationState != 0;
 }
 
-void TimeRenderer_SetTime(uint8_t hour, uint8_t minutes, _Bool animate)
+bool TimeRenderer_SetTime(uint8_t hour, uint8_t minutes, uint8_t seconds, _Bool animate)
 {
+  if (hour == currentHour && minutes == currentMinute && seconds == currentSecond)
+    return false;
+
   previousHour = currentHour;
   previousMinute = currentMinute;
 
   currentHour = hour;
   currentMinute = minutes;
+  currentSecond = seconds;
 
   if (animate)
+  {
     animationState = 8;
+  }
   else
   {
     animationState = 0;
-    __privateRender();
   }
+  
+  __privateRender();
+
+  return animationState != 0;
 }

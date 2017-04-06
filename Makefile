@@ -14,7 +14,7 @@ PORT=/dev/ttyUSB0
 # For UsbTiny ISP
 # AVRDUDE_FLAGS = -c usbtiny
 
-SOURCES= main.c font.c Panels.c TimeRenderer.c
+SOURCES= main.c font.c Panels.c TimeRenderer.c DS1307.c 7Segment.c
 A_SOURCES = 
 TARGET= PanelClock
 

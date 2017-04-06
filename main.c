@@ -3,175 +3,92 @@
 #include "TimeRenderer.h"
 #include "Panels.h"
 #include "DateTime.h"
-
-#define TICKTIME 50
+#include "DS1307.h"
+#include <avr/interrupt.h>
+#include <avr/sleep.h>
+#include <util/atomic.h>
 
 struct DateTime TheDateTime;
 
-inline void I2CWait()
+#define CLOCK_UPDATE 1
+#define CLOCK_TICK   2
+volatile uint8_t event;
+
+ISR (INT0_vect) // External interrupt 0
 {
-
-  while (!(TWCR & _BV(TWINT)))
-    ; // Wait
-
+  event |= CLOCK_UPDATE;
 }
 
-void Write_DS1307_regs(uint8_t reg, uint8_t amount, uint8_t *ptr)
+uint8_t timer2_scaler = 2;
+
+ISR (TIMER2_OVF_vect)
 {
-  if (amount == 0)
-    return;
-
-  // Send START
-  TWCR = _BV(TWINT)| _BV(TWSTA) | _BV(TWEN);
-
-  I2CWait();
-
-  if ((TWSR & 0xF8) != 0x08)
-    return;
-
-  TWDR=0xd0;  // Slave address, write
-  TWCR = _BV(TWEN) | _BV(TWINT);
-  I2CWait();
-
-  if ((TWSR & 0xf8) != 0x18)
-    goto error; // Not acked
-
-  // Send register address
-
-  TWDR = reg;
-  TWCR = _BV(TWEN) | _BV(TWINT);
-  I2CWait();
-
-  if ((TWSR & 0xf8) != 0x28)
-    goto error; // Not ack.
-
-  while(amount--)
+  if (timer2_scaler == 0)
   {
-    TWDR = *ptr++;
-    TWCR = _BV(TWEN) | _BV(TWINT) | _BV(TWEA); // Clear TWINT to resume,
-    I2CWait();
-    if((TWSR & 0xf8) != 0x28)
-      break;
+    // Stop the tick timer.
+    TCCR2B = 0;
+    event |= CLOCK_TICK; // results in ~48 ms per call
+    timer2_scaler = 2;
   }
-
-error:
-  TWCR = _BV(TWINT) | _BV(TWSTO) | _BV(TWEN); // Stop    
-}
-void Read_DS1307_regs(uint8_t reg, uint8_t amount, uint8_t *ptr)
-{
-  if (amount == 0)
-    return;
-
-  // Send START
-  TWCR = _BV(TWINT)| _BV(TWSTA) | _BV(TWEN);
-
-  I2CWait();
-
-  if ((TWSR & 0xF8) != 0x08)
-    return;
-
-  TWDR=0xd0;  // Slave address, write
-  TWCR = _BV(TWEN) | _BV(TWINT);
-  I2CWait();
-
-  if ((TWSR & 0xf8) != 0x18)
-    goto error; // Not acked
-
-  // Send register address
-
-  TWDR = reg;
-  TWCR = _BV(TWEN) | _BV(TWINT);
-  I2CWait();
-
-  if ((TWSR & 0xf8) != 0x28)
-    goto error; // Not ack.
-
-  // Send repeated start
-  TWCR = _BV(TWINT)| _BV(TWSTA) | _BV(TWEN);
-  I2CWait();
-
-  if ((TWSR & 0xF8) != 0x10)
-    goto error;
-
-  TWDR=0xd1;  // Slave address, read
-  TWCR = _BV(TWEN) | _BV(TWINT);
-  I2CWait();
-
-  if ((TWSR & 0xf8) != 0x40)
-    goto error; // Not acked
-
-  while(--amount)
+  else
   {
-    TWCR = _BV(TWEN) | _BV(TWINT) | _BV(TWEA); // Clear TWINT to resume, send ack to indicate more data is requested
-    I2CWait();
-    if((TWSR & 0xf8) != 0x50)
-      goto error; // Not acked.
-
-    *ptr++ = TWDR;
-  }
-
-  //read last byte
-
-  TWCR = _BV(TWEN) | _BV(TWINT); // Clear TWINT to resume, send nack 
-  I2CWait();
-  *ptr++ = TWDR;
-
-error:
-  TWCR = _BV(TWINT) | _BV(TWSTO) | _BV(TWEN); // Stop    
-}
-
-void Read_DS1307_DateTime()
-{
-  // Read the first 7 registers.
-
-  Read_DS1307_regs(0, 7, (uint8_t *)&TheDateTime);
-  
-  // Check bit 7 of "sec" - if it is 1, the clock wasn't running!
-  if (TheDateTime.sec & 0x80)
-  {
-    TheDateTime.sec &= 0x7f;
-    _delay_ms(100); 
-    Write_DS1307_regs(0,1,(uint8_t *)&TheDateTime); // Clear it
+    timer2_scaler--;
   }
 }
 
 int main(void)
 {
-  // Set up SPI outputs
-  
-  DDRB |= _BV(PORTB2) | _BV(PORTB3) | _BV(PORTB5);
-
-  // Enable SPI, master mode, 1MHz clock
-  SPCR |= _BV(SPE) | _BV(MSTR) | _BV(SPR0);
-
-  // Set up I2C
-  
-  DDRC = 0; // entire port input
-  PORTC = 0x3f; // Enable pull-up
-  DDRC = 0x30; // PC4 and PC5 to output.
-
-  // Configure I2C speed: 100 KHz @ 16MHz clock
-  TWSR = 0;
-  TWBR = 72;
-  TWCR = _BV(TWEN); // enable I2C
-
-  InitializePanels(3);
+  InitializePanels(4);
   SetBrightness(1);
 
-  TimeRenderer_SetTime(99,99,false); // reset
+  Init_DS1307();
+
+  // Setup external interrupt for the 1Hz clock
   
-  uint8_t trig = 0;
+  EICRA = _BV(ISC01);
+  EIMSK = _BV(INT0);
+
+  TIMSK2 = _BV(TOIE2); // Enable overflow interrupt, will trigger every 16 ms - but don't start the timer yet.
+
+  TimeRenderer_SetTime(TheDateTime.min,TheDateTime.sec,TheDateTime.sec, false); 
   
   while (1)
   {
-    _delay_ms(TICKTIME); 
-    TimeRenderer_Tick();
-    trig = trig + 1;
-    if (trig == (1000 / TICKTIME) )
+    uint8_t eventToHandle = 0;
+    _Bool tickWanted = false;
+
+    ATOMIC_BLOCK(ATOMIC_FORCEON)
+    {
+      eventToHandle = event;
+      event = 0;
+    }
+    
+    if (eventToHandle & CLOCK_TICK)
+    {
+      tickWanted |= TimeRenderer_Tick();
+    }
+    if (eventToHandle & CLOCK_UPDATE)
     {
       Read_DS1307_DateTime();
-      TimeRenderer_SetTime(TheDateTime.min,TheDateTime.sec,true); 
-      trig = 0;
+      tickWanted |= TimeRenderer_SetTime(TheDateTime.hour,TheDateTime.min, TheDateTime.sec,true); 
+    }
+
+    if (tickWanted)
+    {
+      // Setup timer 2: /1024 prescaler, 
+      TCCR2B = _BV(CS22) | _BV(CS21) | _BV(CS20); 
+    }
+    
+    if (eventToHandle == 0)
+    {
+      // Nothing to do, go to sleep
+      set_sleep_mode(SLEEP_MODE_PWR_SAVE);
+      cli();
+      sleep_enable();
+      sleep_bod_disable();
+      sei();
+      sleep_cpu();
+      sleep_disable();
     }
   }
 }

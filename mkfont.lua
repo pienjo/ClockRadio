@@ -30,15 +30,15 @@ for line in fontfile:lines() do
 end
 print ("#include <font.h>")
 print ""
-print ("// two rows per byte, lower nybble first")
-print ("uint8_t font[10][4] = {")
+print ("// two rows per byte, lower nybble first, 4 bytes per char")
+print ("const uint8_t PROGMEM font[40] = {")
 
 for _, c in pairs(font) do
   local str = {}
   for i = 1, #c,2 do
     table.insert(str, "0x"..c[i+1]..c[i])
   end
-  print ("  { " .. table.concat(str, ", ") .. "}, ")
+  print ("  " .. table.concat(str, ", ") .. ", ")
 end
 
 print ("};")
