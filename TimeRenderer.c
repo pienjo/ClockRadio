@@ -96,7 +96,9 @@ bool TimeRenderer_Tick()
 
 bool TimeRenderer_SetTime(uint8_t hour, uint8_t minutes, uint8_t seconds, _Bool animate)
 {
-  if (hour == currentHour && minutes == currentMinute && seconds == currentSecond)
+  _Bool dotmatrixChanged = (hour != currentHour || minutes != currentMinute);
+
+  if (!dotmatrixChanged && seconds == currentSecond)
     return false;
 
   previousHour = currentHour;
@@ -106,7 +108,7 @@ bool TimeRenderer_SetTime(uint8_t hour, uint8_t minutes, uint8_t seconds, _Bool 
   currentMinute = minutes;
   currentSecond = seconds;
 
-  if (animate)
+  if (animate && dotmatrixChanged)
   {
     animationState = 8;
   }
