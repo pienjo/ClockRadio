@@ -2,12 +2,12 @@ CC=avr-gcc
 OBJCOPY=avr-objcopy
 OBJDUMP=avr-objdump
 AVRDUDE=avrdude
-MCU=atmega328p
+MCU=atmega168p
 FREQ=16000000
 CURRENT_DIR = $(shell pwd)
 
 # For Arduino bootloader
-#BAUDRATE=-b 57600
+# BAUDRATE=-b 57600
 AVRDUDE_FLAGS = -c arduino $(BAUDRATE) -P $(PORT)
 PORT=/dev/ttyUSB0
 
