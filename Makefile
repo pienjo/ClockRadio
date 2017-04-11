@@ -8,13 +8,13 @@ CURRENT_DIR = $(shell pwd)
 
 # For Arduino bootloader
 # BAUDRATE=-b 57600
-AVRDUDE_FLAGS = -c arduino $(BAUDRATE) -P $(PORT)
-PORT=/dev/ttyUSB0
+#AVRDUDE_FLAGS = -c arduino $(BAUDRATE) -P $(PORT)
+# PORT=/dev/ttyUSB0
 
 # For UsbTiny ISP
-# AVRDUDE_FLAGS = -c usbtiny
+AVRDUDE_FLAGS = -c usbtiny
 
-SOURCES= main.c font.c Panels.c TimeRenderer.c DS1307.c 7Segment.c
+SOURCES= main.c font.c Panels.c Renderer.c DS1307.c 7Segment.c
 A_SOURCES = 
 TARGET= PanelClock
 

@@ -152,10 +152,10 @@ void Init_DS1307()
 
   // See if any of the flags included in the time registers needs changing, as that boils down to
   // re-setting the time.
-  if ((TheDateTime.sec & 0x80) || (TheDateTime.min & 0x40))
+  if ((TheDateTime.sec & 0x80) || (TheDateTime.hour & 0x40))
   {
     TheDateTime.sec &= ~0x80; // Enable oscillator
-    TheDateTime.min &= ~0x40; // Use 24 hour mode
+    TheDateTime.hour &= ~0x40; // Use 24 hour mode
     Write_DS1307_DateTime();
   }
 
