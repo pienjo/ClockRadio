@@ -6,6 +6,12 @@
 
 static uint8_t previousHour = 0, previousMinute = 0, animationState = 0, myMainMode = 0, mySecondaryMode = 0;
 
+static uint8_t blinkMask = 0x0;
+
+static uint8_t blinkStatus = 0;
+
+#define BLINK_PERIOD 10
+
 static uint8_t __getDigitMask(uint8_t prevDigit, uint8_t currentDigit, int8_t row)
 {
   uint8_t digitToShow = currentDigit;
@@ -37,12 +43,9 @@ static uint8_t __getDigitMask(uint8_t prevDigit, uint8_t currentDigit, int8_t ro
 static void __privateRender()
 {
   uint8_t data[4]; // Data to be sent to the panels
-  
+
   // Pre-compute the data for the 7-segment displays, it needs to be rotated
-  uint8_t segmentDigits[8];
- 
-  for (uint8_t i = 0; i < 8; ++i)
-    segmentDigits[i] = 0; // space
+  uint8_t segmentDigits[8] = { 0 };
  
   switch (mySecondaryMode)
   {
@@ -56,6 +59,18 @@ static void __privateRender()
       segmentDigits[DIGIT_3] = pgm_read_byte(BCDToSegment + (TheDateTime.year >> 4));
       segmentDigits[DIGIT_4] = pgm_read_byte(BCDToSegment + (TheDateTime.year & 0xf));
       break;
+  }
+
+  if (blinkStatus < BLINK_PERIOD)
+  {
+    if (blinkMask & 0x08)
+      segmentDigits[DIGIT_1] = 0;
+    if (blinkMask & 0x04)
+      segmentDigits[DIGIT_2] = 0;
+    if (blinkMask & 0x02)
+      segmentDigits[DIGIT_3] = 0;
+    if (blinkMask & 0x01)
+      segmentDigits[DIGIT_4] = 0;
   }
 
   uint8_t mainDigit[4] = {0};
@@ -75,6 +90,15 @@ static void __privateRender()
 	mainDigit[2] = __getDigitMask(TheDateTime.month >> 4, TheDateTime.month >> 4, i);
 	mainDigit[3] = __getDigitMask(TheDateTime.month &0xf, TheDateTime.month & 0xf, i);
 	break;
+    }
+    
+    if (blinkStatus < BLINK_PERIOD)
+    {
+      for (uint8_t i = 0, mask = 0x80; i < 4; ++i, mask >>= 1)
+      {
+	if (blinkMask & mask)
+	  mainDigit[i] = 0;
+      }
     }
 
     // day-of-week on 0 and 1, Digit 0 at 3, space at 7
@@ -105,6 +129,8 @@ static void __privateRender()
 
 void Renderer_Tick()
 {
+  blinkStatus = (blinkStatus + 1) % ( 2 * BLINK_PERIOD);
+  
   if (animationState)
   {
     animationState--;
@@ -114,7 +140,8 @@ void Renderer_Tick()
       previousHour = TheDateTime.hour;
       previousMinute = TheDateTime.min;
     }
-  }
+  } else if (blinkMask && (blinkStatus == 0 || blinkStatus == BLINK_PERIOD))
+    __privateRender();
 }
 
 void Renderer_Update(uint8_t mainMode, uint8_t secondaryMode, _Bool animate)
@@ -132,4 +159,9 @@ void Renderer_Update(uint8_t mainMode, uint8_t secondaryMode, _Bool animate)
   {
     animationState = 1;
   }
+}
+
+void Renderer_SetFlashMask(uint8_t mask)
+{
+  blinkMask = mask; 
 }

@@ -15,5 +15,8 @@ void Renderer_Tick(); // Must be called regularly for animations
 
 // Update contents. if _animate is true, use "rolling" animation.
 void Renderer_Update(uint8_t mainMode, uint8_t secondaryMode, bool animate);
+
+// Set which digits should be flashing. bit 7 = leftmost digit, bit 0 = rightmost digit
+void Renderer_SetFlashMask(uint8_t mask);
 #endif
 
