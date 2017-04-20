@@ -27,6 +27,19 @@ struct DateTime TheDateTime;
 #define BUTTON6_RELEASE 0x4000
 #define BUTTON7_RELEASE 0x8000
 
+#define SET_TICKS 20
+
+enum clockMode
+{
+  modeShowTime,
+  modeAdjustYearTens,
+  modeAdjustYearOnes,
+  modeAdjustMonth,
+  modeAdjustDayTens,
+  modeAdjustDayOnes,
+  modeAdjustDone,
+  modeCount,
+};
 
 volatile uint16_t event;
 
@@ -82,6 +95,50 @@ ISR (TIMER2_OVF_vect)
   }
 }
 
+void ReduceOne(uint8_t *value)
+{
+  uint8_t v = *value & 0x0f;
+  if (v)
+    v = v - 1;
+  else
+    v = 9;
+
+  *value = (*value & 0xf0) | v;
+}
+
+void IncreaseOnes(uint8_t *value)
+{
+  uint8_t v = *value & 0x0f;
+  if (v == 9)
+    v = 0;
+  else
+    v++;
+
+  *value = (*value & 0xf0) | v;
+}
+
+void ReduceTens(uint8_t *value)
+{
+  uint8_t v = *value & 0xf0;
+  if (v)
+    v = v - 0x10;
+  else
+    v = 0x90;
+
+  *value = (*value & 0x0f) | v;
+}
+
+void IncreaseTens(uint8_t *value)
+{
+  uint8_t v = *value & 0xf0;
+  if (v == 0x90)
+    v = 0;
+  else
+    v+= 0x10;
+
+  *value = (*value & 0x0f) | v;
+}
+
 int main(void)
 {
   InitializePanels(4);
@@ -105,7 +162,8 @@ int main(void)
   TCCR2B = _BV(CS22) | _BV(CS21) | _BV(CS20); 
 
   uint8_t secMode = SECONDARY_MODE_SEC;
-
+  uint8_t setTimeout = 0;
+  enum clockMode deviceMode = modeShowTime;
   while (1)
   {
     uint16_t eventToHandle = 0;
@@ -115,30 +173,169 @@ int main(void)
       eventToHandle = event;
       event = 0;
     }
-    
+    enum clockMode newDeviceMode = deviceMode;
+
     if (eventToHandle & CLOCK_TICK)
     {
       Renderer_Tick();
-    }
 
-    if (eventToHandle & CLOCK_UPDATE)
-    {
-      Read_DS1307_DateTime();
-      Renderer_Update(MAIN_MODE_TIME, secMode, true); 
+      if(setTimeout && setTimeout < SET_TICKS)
+      {
+	setTimeout++;
+	if(setTimeout == SET_TICKS)
+	{
+	  newDeviceMode++;
+	}
+      }
     }
     
     if (eventToHandle & BUTTON1_CLICK)
     {
-      secMode = SECONDARY_MODE_YEAR;
-      Renderer_Update(MAIN_MODE_TIME, secMode, true); 
+      if (deviceMode == modeShowTime)
+        setTimeout = 1;
+      else
+      {
+	newDeviceMode++;
+      }
     }
+
+    if (newDeviceMode != deviceMode)
+    {
+      // Update the screen.
+      switch(newDeviceMode)
+      {
+	case modeAdjustYearOnes:
+	  Renderer_SetFlashMask(0x1); 
+	  break;
+	case modeAdjustYearTens:
+	  Renderer_Update(MAIN_MODE_DATE, SECONDARY_MODE_YEAR,false);
+	  Renderer_SetFlashMask(0x2); 
+	  break;
+	case modeAdjustMonth:
+	  Renderer_SetFlashMask(0x30); 
+	  break;
+	case modeAdjustDayOnes:
+	  Renderer_SetFlashMask(0x40); 
+	  break;
+	case modeAdjustDayTens:
+	  Renderer_SetFlashMask(0x80); 
+	  break;
+	case modeAdjustDone:
+	  Renderer_SetFlashMask(0);
+	  // Write out time
+          Write_DS1307_DateTime();
+	  Renderer_Update(MAIN_MODE_TIME, SECONDARY_MODE_SEC, false); 
+	  newDeviceMode = modeShowTime;
+	  break;
+	default:
+	  break;
+      }
+      deviceMode = newDeviceMode;
+    }
+    else
+    {
+      if (eventToHandle & CLOCK_UPDATE && deviceMode == modeShowTime)
+      {
+	Read_DS1307_DateTime();
+	Renderer_Update(MAIN_MODE_TIME, secMode, true); 
+      }
+    } 
     
     if (eventToHandle & BUTTON1_RELEASE)
     {
-      secMode = SECONDARY_MODE_SEC;
-      Renderer_Update(MAIN_MODE_TIME, secMode, true); 
+      setTimeout = 0;
     }
 
+    if (eventToHandle & BUTTON2_CLICK || eventToHandle & BUTTON4_CLICK)
+    {
+      switch(deviceMode)
+      {
+	case modeAdjustYearOnes:
+	  IncreaseOnes(&TheDateTime.year);
+	  break;
+	case modeAdjustYearTens:
+	  IncreaseTens(&TheDateTime.year);
+	  break;
+	case modeAdjustMonth:
+	  if (TheDateTime.month == 0x12)
+	    TheDateTime.month = 1;
+	  else
+	  {
+	    if (TheDateTime.month == 0x09)
+	      TheDateTime.month = 0x10;
+	    else
+	      TheDateTime.month++;
+	  }
+	  break;
+	case modeAdjustDayOnes:
+	  IncreaseOnes(&TheDateTime.day);
+	  break;
+	case modeAdjustDayTens:
+	  IncreaseTens(&TheDateTime.day);
+	  if ((TheDateTime.day & 0xf0) == 0x40)
+	    TheDateTime.day &= 0x0f;
+	  break;
+	default:  
+	  break;
+      }
+
+      if (deviceMode > modeShowTime && deviceMode <= modeAdjustDayTens)
+      {
+	Renderer_Update(MAIN_MODE_DATE, SECONDARY_MODE_YEAR,false);
+      }
+    }
+
+    if (eventToHandle & BUTTON3_CLICK)
+    {
+      switch(deviceMode)
+      {
+	case modeAdjustYearOnes:
+	  ReduceOne(&TheDateTime.year);
+	  break;
+	case modeAdjustYearTens:
+	  ReduceTens(&TheDateTime.year);
+	  break;
+	case modeAdjustMonth:
+	  if (TheDateTime.month == 0x01)
+	  { 
+	    TheDateTime.month = 0x12;
+	  }
+	  else
+	  { 
+	    if (TheDateTime.month == 0x10)
+	      TheDateTime.month= 0x09;
+	    else
+	      TheDateTime.month--;
+	  }
+	   break;
+	case modeAdjustDayOnes:
+	  ReduceOne(&TheDateTime.day);
+	  break;
+	case modeAdjustDayTens:
+	  ReduceTens(&TheDateTime.day);
+	  if((TheDateTime.day & 0xf0) == 0x90)
+	  {
+	    TheDateTime.day&= 0x0f;
+
+	    if (TheDateTime.month == 2)
+	    {
+	      TheDateTime.day |= 0x20;
+	    }
+	    else
+	    {
+	      TheDateTime.day |= 0x30;
+	    }
+	  }
+	  break;
+	default:  
+	  break;
+      }
+
+      if (deviceMode > modeShowTime && deviceMode <= modeAdjustDayTens)
+      {
+	Renderer_Update(MAIN_MODE_DATE, SECONDARY_MODE_YEAR,false);
+      }
+    }
     if (eventToHandle == 0)
     {
       // Nothing to do, go to sleep
