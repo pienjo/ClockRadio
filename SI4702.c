@@ -323,7 +323,10 @@ void Init_SI4702()
   Write_SI4702();
 
   _delay_ms(125); // Allow oscillator to settle
+}
 
+void SI4702_PowerOn()
+{
   Read_SI4702(); // Some registers may have shifted during takeoff
   SI4702_regs[POWERCONFIG_H] = DSMUTE | DMUTE | MONO;
   SI4702_regs[POWERCONFIG_L] = ENABLE ;
@@ -335,12 +338,20 @@ void Init_SI4702()
   Write_SI4702();
 }
 
+void SI4702_PowerOff()
+{
+  Read_SI4702(); // Some registers may have shifted during takeoff
+  SI4702_regs[POWERCONFIG_L] &= ~(ENABLE) ;
+  Write_SI4702();
+}
+
 uint16_t targetFreq = 0;
 _Bool seekStart = 0;
 
 void SI4702_SetFrequency(uint16_t freq)
 {
-  targetFreq = freq;
+  if (freq >= 875 && freq <= 1080)
+    targetFreq = freq;
 }
 
 void SI4702_Seek()

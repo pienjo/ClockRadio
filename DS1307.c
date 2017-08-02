@@ -38,3 +38,12 @@ void Init_DS1307()
   Write_I2C_Regs(DS1307_ADDR, 7,1,&control);
 }
 
+void Read_DS1307_RAM(uint8_t *data, uint8_t addr, uint8_t size)
+{
+  Read_I2C_Regs(DS1307_ADDR, addr + 8, size, data);
+}
+
+void Write_DS1307_RAM(uint8_t *data, uint8_t addr, uint8_t size)
+{
+  Write_I2C_Regs(DS1307_ADDR, addr + 8, size, data);
+}

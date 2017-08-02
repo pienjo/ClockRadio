@@ -89,7 +89,6 @@ ISR (TIMER2_OVF_vect)
     // Mark as handled
     buttonDebounce[3] =( buttonDebounce[3] & (~buttonsToReport) ) | (buttonsToReport & buttonDebounce[timer2_scaler]);
   
-    // Propagate only press events (1->0 flanks, as buttons are pulled up when not pressed)
     uint8_t pressedButtons = buttonsToReport & ~(buttonDebounce[timer2_scaler]);
     uint8_t releasedButtons = buttonsToReport & (buttonDebounce[timer2_scaler]);
     
@@ -142,24 +141,34 @@ void UpdateDOW()
   uint8_t year = TheDateTime.year >> 4 | (TheDateTime.year & 0xf); // Undo BCD
   TheDateTime.wday = ((year + 5 - year / 4 - pgm_read_byte(dowTable + TheDateTime.month -1) + TheDateTime.day) % 7) + 1;
 }
-
-void AmplifierOn()
+ 
+_Bool radioIsOn = 0;
+  
+void RadioOn()
 {
-	// Amplifier control is active low
-	PORTC = PORTC & ~( _BV(PORTC2));
+  // Amplifier control is active low
+  PORTC = PORTC & ~( _BV(PORTC2));
+  int16_t frequency;
+  Read_DS1307_RAM((uint8_t *)&frequency, 0, 2);
+  SI4702_SetFrequency(frequency);
+  SI4702_PowerOn();
+  radioIsOn = 1;  
 }
 
-void AmplifierOff()
+void RadioOff()
 {
-	// Amplifier control is active low
-	PORTC = PORTC | _BV(PORTC2);
+   // Amplifier control is active low
+  PORTC = PORTC | _BV(PORTC2);
+  SI4702_PowerOff();
+  radioIsOn = 0;
 }
 
 int main(void)
 {
-	// Enable output on PORT C2 (amplifier control)
+  // Enable output on PORT C2 (amplifier control)
   DDRC |= _BV(PORTC2);
-  AmplifierOff();
+  // Amplifier control is active low
+  PORTC = PORTC | _BV(PORTC2);
   
   InitializePanels(4);
   SetBrightness(1);
@@ -167,8 +176,7 @@ int main(void)
   Init_I2C();
   Init_DS1307();
   Init_SI4702();
-  SI4702_SetFrequency(886);
-
+  
   // Set port D to input, enable pull-up on portD except for PortD2 (ext0)
 
   DDRD = 0;
@@ -184,7 +192,7 @@ int main(void)
   // Setup timer 2: /1024 prescaler, 
   TCCR2B = _BV(CS22) | _BV(CS21) | _BV(CS20); 
 
-  uint8_t secMode = SECONDARY_MODE_RADIO;
+  uint8_t secMode = SECONDARY_MODE_SEC;
   uint8_t mainMode = MAIN_MODE_TIME;
 
   uint8_t setTimeout = 0;
@@ -193,8 +201,6 @@ int main(void)
   uint8_t *editDigit = 0;
   uint8_t editMode = 0;
   uint8_t editMaxValue = 0x99;
-  
-  uint8_t amplifier_tick = 0;
   
   while (1)
   {
@@ -304,21 +310,14 @@ int main(void)
     }
     else
     {
-	
-      if (eventToHandle & CLOCK_UPDATE && deviceMode == modeShowTime)
+      if (eventToHandle & CLOCK_UPDATE)
       {
-  			amplifier_tick ++;
-				if (amplifier_tick & 0x4)
-				{
-					AmplifierOn();
-				}
-				else
-				{
-					AmplifierOff();
-				}
-        Read_DS1307_DateTime();
-        Poll_SI4702();
-        updateScreen = 1;
+	if (deviceMode == modeShowTime)
+	{
+	  Read_DS1307_DateTime();
+	  updateScreen = 1;
+	}
+	
       }
     } 
     
