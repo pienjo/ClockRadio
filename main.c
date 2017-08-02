@@ -4,9 +4,14 @@
 #include "Panels.h"
 #include "DateTime.h"
 #include "DS1307.h"
+#include "SI4702.h"
+
+#include "i2c.h"
+
 #include <avr/interrupt.h>
 #include <avr/sleep.h>
 #include <util/atomic.h>
+#include <avr/pgmspace.h>
 
 struct DateTime TheDateTime;
 
@@ -29,6 +34,12 @@ struct DateTime TheDateTime;
 
 #define SET_TICKS 20
 
+#define EDIT_MODE_ONES     0x1
+#define EDIT_MODE_TENS     0x2
+#define EDIT_MODE_NUMBER   (EDIT_MODE_ONES |EDIT_MODE_TENS)
+#define EDIT_MODE_MASK     0x03
+#define EDIT_MODE_ONEBASE 0x04
+
 enum clockMode
 {
   modeShowTime,
@@ -37,6 +48,10 @@ enum clockMode
   modeAdjustMonth,
   modeAdjustDayTens,
   modeAdjustDayOnes,
+  modeAdjustHoursTens,
+  modeAdjustHoursOnes,
+  modeAdjustMinsTens,
+  modeAdjustMinsOnes,
   modeAdjustDone,
   modeCount,
 };
@@ -79,6 +94,7 @@ ISR (TIMER2_OVF_vect)
     uint8_t releasedButtons = buttonsToReport & (buttonDebounce[timer2_scaler]);
     
     // Report
+  
     event |= (uint16_t) pressedButtons | ((uint16_t)releasedButtons << 8);
   }
 
@@ -95,56 +111,63 @@ ISR (TIMER2_OVF_vect)
   }
 }
 
-void ReduceOne(uint8_t *value)
+const uint8_t PROGMEM dpm[] =
 {
-  uint8_t v = *value & 0x0f;
-  if (v)
-    v = v - 1;
-  else
-    v = 9;
+  0x31, // jan
+  0x28, // feb
+  0x31, // mar
+  0x30, // apr
+  0x31, // may
+  0x30, // jun
+  0x31, // jul
+  0x31, // aug
+  0x30, // sep
+  0x31, // oct
+  0x30, // nov
+  0x31, // dec;
+};
 
-  *value = (*value & 0xf0) | v;
+uint8_t GetDaysPerMonth()
+{
+  uint8_t days = pgm_read_byte(dpm + TheDateTime.month-1);
+  if (TheDateTime.month == 2 && (TheDateTime.year %4 == 0))
+    days++; // February on a leap year
+  
+  return days;
 }
 
-void IncreaseOnes(uint8_t *value)
+const uint8_t PROGMEM dowTable[] = { 0,3,2,5,0,3,5,1,4,6,2,4 };
+void UpdateDOW()
 {
-  uint8_t v = *value & 0x0f;
-  if (v == 9)
-    v = 0;
-  else
-    v++;
-
-  *value = (*value & 0xf0) | v;
+  uint8_t year = TheDateTime.year >> 4 | (TheDateTime.year & 0xf); // Undo BCD
+  TheDateTime.wday = ((year + 5 - year / 4 - pgm_read_byte(dowTable + TheDateTime.month -1) + TheDateTime.day) % 7) + 1;
 }
 
-void ReduceTens(uint8_t *value)
+void AmplifierOn()
 {
-  uint8_t v = *value & 0xf0;
-  if (v)
-    v = v - 0x10;
-  else
-    v = 0x90;
-
-  *value = (*value & 0x0f) | v;
+	// Amplifier control is active low
+	PORTC = PORTC & ~( _BV(PORTC2));
 }
 
-void IncreaseTens(uint8_t *value)
+void AmplifierOff()
 {
-  uint8_t v = *value & 0xf0;
-  if (v == 0x90)
-    v = 0;
-  else
-    v+= 0x10;
-
-  *value = (*value & 0x0f) | v;
+	// Amplifier control is active low
+	PORTC = PORTC | _BV(PORTC2);
 }
 
 int main(void)
 {
+	// Enable output on PORT C2 (amplifier control)
+  DDRC |= _BV(PORTC2);
+  AmplifierOff();
+  
   InitializePanels(4);
   SetBrightness(1);
-
+  
+  Init_I2C();
   Init_DS1307();
+  Init_SI4702();
+  SI4702_SetFrequency(886);
 
   // Set port D to input, enable pull-up on portD except for PortD2 (ext0)
 
@@ -161,12 +184,23 @@ int main(void)
   // Setup timer 2: /1024 prescaler, 
   TCCR2B = _BV(CS22) | _BV(CS21) | _BV(CS20); 
 
-  uint8_t secMode = SECONDARY_MODE_SEC;
+  uint8_t secMode = SECONDARY_MODE_RADIO;
+  uint8_t mainMode = MAIN_MODE_TIME;
+
   uint8_t setTimeout = 0;
   enum clockMode deviceMode = modeShowTime;
+
+  uint8_t *editDigit = 0;
+  uint8_t editMode = 0;
+  uint8_t editMaxValue = 0x99;
+  
+  uint8_t amplifier_tick = 0;
+  
   while (1)
   {
     uint16_t eventToHandle = 0;
+
+    _Bool updateScreen = 0;
 
     ATOMIC_BLOCK(ATOMIC_FORCEON)
     {
@@ -178,14 +212,13 @@ int main(void)
     if (eventToHandle & CLOCK_TICK)
     {
       Renderer_Tick();
-
       if(setTimeout && setTimeout < SET_TICKS)
       {
-	setTimeout++;
-	if(setTimeout == SET_TICKS)
-	{
-	  newDeviceMode++;
-	}
+        setTimeout++;
+        if(setTimeout == SET_TICKS)
+        {
+          newDeviceMode++;
+        }
       }
     }
     
@@ -195,7 +228,7 @@ int main(void)
         setTimeout = 1;
       else
       {
-	newDeviceMode++;
+        newDeviceMode++;
       }
     }
 
@@ -204,40 +237,88 @@ int main(void)
       // Update the screen.
       switch(newDeviceMode)
       {
-	case modeAdjustYearOnes:
-	  Renderer_SetFlashMask(0x1); 
-	  break;
-	case modeAdjustYearTens:
-	  Renderer_Update(MAIN_MODE_DATE, SECONDARY_MODE_YEAR,false);
-	  Renderer_SetFlashMask(0x2); 
-	  break;
-	case modeAdjustMonth:
-	  Renderer_SetFlashMask(0x30); 
-	  break;
-	case modeAdjustDayOnes:
-	  Renderer_SetFlashMask(0x40); 
-	  break;
-	case modeAdjustDayTens:
-	  Renderer_SetFlashMask(0x80); 
-	  break;
-	case modeAdjustDone:
-	  Renderer_SetFlashMask(0);
-	  // Write out time
+        case modeAdjustYearTens:
+          mainMode = MAIN_MODE_DATE;
+          secMode = SECONDARY_MODE_YEAR;
+          updateScreen = 1;
+
+          Renderer_SetFlashMask(0x2); 
+          editDigit = &TheDateTime.year;
+          editMode = EDIT_MODE_TENS | EDIT_MODE_ONEBASE;
+          editMaxValue = 0x99 | EDIT_MODE_ONEBASE;
+          break;
+        case modeAdjustYearOnes:
+          Renderer_SetFlashMask(0x1); 
+          editMode = EDIT_MODE_ONES;
+          break;
+        case modeAdjustMonth:
+          editMode = EDIT_MODE_NUMBER | EDIT_MODE_ONEBASE; 
+          editDigit = &TheDateTime.month;
+          editMaxValue = 0x12;
+          Renderer_SetFlashMask(0x30); 
+          break;
+        case modeAdjustDayTens:
+          editDigit = &TheDateTime.day;
+          editMaxValue = GetDaysPerMonth();
+          editMode = EDIT_MODE_TENS | EDIT_MODE_ONEBASE;
+          Renderer_SetFlashMask(0x80); 
+          break;
+        case modeAdjustDayOnes:
+          editMode = EDIT_MODE_ONES | EDIT_MODE_ONEBASE;
+          Renderer_SetFlashMask(0x40); 
+          break;
+        case modeAdjustHoursTens:
+          mainMode = MAIN_MODE_TIME;
+          secMode = SECONDARY_MODE_SEC;
+          editMode = EDIT_MODE_TENS;
+          updateScreen = 1;
+          editMaxValue = 0x23;
+          editDigit = &TheDateTime.hour;
+          Renderer_SetFlashMask(0x80); 
+          break;
+        case modeAdjustHoursOnes:
+          Renderer_SetFlashMask(0x40); 
+          editMode = EDIT_MODE_ONES;
+          break;
+        case modeAdjustMinsTens:
+          editMode = EDIT_MODE_TENS;
+          editMaxValue = 0x59;
+          editDigit = &TheDateTime.min;
+          Renderer_SetFlashMask(0x20); 
+          break;
+        case modeAdjustMinsOnes:
+          Renderer_SetFlashMask(0x10); 
+          editMode = EDIT_MODE_ONES;
+          break;
+        case modeAdjustDone:
+          Renderer_SetFlashMask(0);
+          editMode = 0;
+          // Write out time
           Write_DS1307_DateTime();
-	  Renderer_Update(MAIN_MODE_TIME, SECONDARY_MODE_SEC, false); 
-	  newDeviceMode = modeShowTime;
-	  break;
-	default:
-	  break;
+          newDeviceMode = modeShowTime;
+          break;
+        default:
+          break;
       }
       deviceMode = newDeviceMode;
     }
     else
     {
+	
       if (eventToHandle & CLOCK_UPDATE && deviceMode == modeShowTime)
       {
-	Read_DS1307_DateTime();
-	Renderer_Update(MAIN_MODE_TIME, secMode, true); 
+  			amplifier_tick ++;
+				if (amplifier_tick & 0x4)
+				{
+					AmplifierOn();
+				}
+				else
+				{
+					AmplifierOff();
+				}
+        Read_DS1307_DateTime();
+        Poll_SI4702();
+        updateScreen = 1;
       }
     } 
     
@@ -245,97 +326,102 @@ int main(void)
     {
       setTimeout = 0;
     }
-
-    if (eventToHandle & BUTTON2_CLICK || eventToHandle & BUTTON4_CLICK)
+    
+    if (editMode)
     {
-      switch(deviceMode)
+      if ((eventToHandle & BUTTON2_CLICK || eventToHandle & BUTTON4_CLICK))
       {
-	case modeAdjustYearOnes:
-	  IncreaseOnes(&TheDateTime.year);
-	  break;
-	case modeAdjustYearTens:
-	  IncreaseTens(&TheDateTime.year);
-	  break;
-	case modeAdjustMonth:
-	  if (TheDateTime.month == 0x12)
-	    TheDateTime.month = 1;
-	  else
-	  {
-	    if (TheDateTime.month == 0x09)
-	      TheDateTime.month = 0x10;
-	    else
-	      TheDateTime.month++;
-	  }
-	  break;
-	case modeAdjustDayOnes:
-	  IncreaseOnes(&TheDateTime.day);
-	  break;
-	case modeAdjustDayTens:
-	  IncreaseTens(&TheDateTime.day);
-	  if ((TheDateTime.day & 0xf0) == 0x40)
-	    TheDateTime.day &= 0x0f;
-	  break;
-	default:  
-	  break;
+        // up
+
+        switch(editMode & EDIT_MODE_MASK)
+        {
+          case EDIT_MODE_ONES:
+          {
+            uint8_t v = *editDigit;
+            v = v&0x0f;
+            if (v < 9)
+              v++;
+            *editDigit = (*editDigit & 0xf0) | v;
+            break;
+          }
+          case EDIT_MODE_TENS:
+          {
+            uint8_t v = *editDigit;
+            v = v&0xf0;
+            if (v < 0x90)
+              v+= 0x10;
+            *editDigit = (*editDigit & 0x0f) | v;
+            break;
+          }
+          case EDIT_MODE_NUMBER:
+          {
+            (*editDigit)++;
+            if ((*editDigit & 0x0f) == 0x0a)
+            {
+              *editDigit += 6; 
+            }
+            break;
+          }
+        }
+        
+        if (*editDigit > editMaxValue)
+          *editDigit = editMaxValue;
+
+        updateScreen = 1;
+        UpdateDOW();
       }
 
-      if (deviceMode > modeShowTime && deviceMode <= modeAdjustDayTens)
+      if (eventToHandle & BUTTON3_CLICK)
       {
-	Renderer_Update(MAIN_MODE_DATE, SECONDARY_MODE_YEAR,false);
+        // down
+        switch(editMode & EDIT_MODE_MASK)
+        {
+          case EDIT_MODE_ONES:
+          {
+            uint8_t v = *editDigit;
+            v = v&0x0f;
+            if (v > 0)
+              v--;
+            *editDigit = (*editDigit & 0xf0) | v;
+            break;
+          }
+          case EDIT_MODE_TENS:
+          {
+            uint8_t v = *editDigit;
+            v = v&0xf0;
+            if (v > 0x00)
+              v-= 0x10;
+            *editDigit = (*editDigit & 0x0f) | v;
+            break;
+          }
+          case EDIT_MODE_NUMBER:
+          {
+            if (*editDigit > 0)
+            {
+              (*editDigit)--;
+              if ((*editDigit & 0x0f) == 0x0f)
+              {
+                *editDigit -= 6; 
+              }
+            }
+            break;
+          }
+        }
+        
+        if ((editMode & EDIT_MODE_ONEBASE) && (*editDigit == 0))
+          *editDigit = 1;
+        
+        UpdateDOW();
+        updateScreen = 1;
       }
     }
 
-    if (eventToHandle & BUTTON3_CLICK)
+    if (updateScreen)
     {
-      switch(deviceMode)
-      {
-	case modeAdjustYearOnes:
-	  ReduceOne(&TheDateTime.year);
-	  break;
-	case modeAdjustYearTens:
-	  ReduceTens(&TheDateTime.year);
-	  break;
-	case modeAdjustMonth:
-	  if (TheDateTime.month == 0x01)
-	  { 
-	    TheDateTime.month = 0x12;
-	  }
-	  else
-	  { 
-	    if (TheDateTime.month == 0x10)
-	      TheDateTime.month= 0x09;
-	    else
-	      TheDateTime.month--;
-	  }
-	   break;
-	case modeAdjustDayOnes:
-	  ReduceOne(&TheDateTime.day);
-	  break;
-	case modeAdjustDayTens:
-	  ReduceTens(&TheDateTime.day);
-	  if((TheDateTime.day & 0xf0) == 0x90)
-	  {
-	    TheDateTime.day&= 0x0f;
-
-	    if (TheDateTime.month == 2)
-	    {
-	      TheDateTime.day |= 0x20;
-	    }
-	    else
-	    {
-	      TheDateTime.day |= 0x30;
-	    }
-	  }
-	  break;
-	default:  
-	  break;
-      }
-
-      if (deviceMode > modeShowTime && deviceMode <= modeAdjustDayTens)
-      {
-	Renderer_Update(MAIN_MODE_DATE, SECONDARY_MODE_YEAR,false);
-      }
+      // Something happened, update display.
+      Renderer_Update(mainMode, secMode,(eventToHandle & CLOCK_UPDATE) && (deviceMode == modeShowTime) );
     }
+
     if (eventToHandle == 0)
     {
       // Nothing to do, go to sleep

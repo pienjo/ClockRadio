@@ -1,0 +1,3 @@
+(fp_lib_table
+  (lib (name mvb_si4702)(type KiCad)(uri "$(KIPRJMOD)/mvb_si4702.pretty")(options "")(descr ""))
+)

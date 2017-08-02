@@ -1,5 +1,6 @@
 #ifndef __DATETIME_H__
 #define __DATETIME_H__
+#include <inttypes.h>
 
 struct DateTime
 {

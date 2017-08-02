@@ -3,6 +3,7 @@
 #include "font.h"
 #include "7Segment.h"
 #include "DateTime.h"
+#include "SI4702.h"
 
 static uint8_t previousHour = 0, previousMinute = 0, animationState = 0, myMainMode = 0, mySecondaryMode = 0;
 
@@ -59,6 +60,19 @@ static void __privateRender()
       segmentDigits[DIGIT_3] = pgm_read_byte(BCDToSegment + (TheDateTime.year >> 4));
       segmentDigits[DIGIT_4] = pgm_read_byte(BCDToSegment + (TheDateTime.year & 0xf));
       break;
+    case SECONDARY_MODE_RADIO:
+    {
+      uint16_t freq = SI4702_GetFrequency();
+
+      segmentDigits[DIGIT_4] = pgm_read_byte(BCDToSegment + (freq%10));
+      freq /= 10;
+      segmentDigits[DIGIT_3] = pgm_read_byte(BCDToSegment + (freq%10)) | SEG_DP;
+      freq /= 10;
+      segmentDigits[DIGIT_2] = pgm_read_byte(BCDToSegment + (freq%10));
+      freq /= 10;
+      if(freq)
+        segmentDigits[DIGIT_1] = pgm_read_byte(BCDToSegment + (freq%10));
+    }
   }
 
   if (blinkStatus < BLINK_PERIOD)
@@ -76,6 +90,7 @@ static void __privateRender()
   uint8_t mainDigit[4] = {0};
   for (uint8_t i = 0; i < 8; ++i)
   {
+    uint8_t dotMask = 0; 
     switch(myMainMode)
     {
       case MAIN_MODE_TIME:
@@ -83,12 +98,14 @@ static void __privateRender()
 	mainDigit[1] = __getDigitMask(previousHour &0xf, TheDateTime.hour & 0xf, i);
 	mainDigit[2] = __getDigitMask(previousMinute >> 4, TheDateTime.min >> 4, i);
 	mainDigit[3] = __getDigitMask(previousMinute &0xf, TheDateTime.min & 0xf, i);
+	dotMask =  (i == 1 || i == 5) ? 0x20 : 0;
 	break;
       case MAIN_MODE_DATE:
 	mainDigit[0] = __getDigitMask(TheDateTime.day >> 4, TheDateTime.day >> 4, i);
 	mainDigit[1] = __getDigitMask(TheDateTime.day &0xf, TheDateTime.day & 0xf, i);
 	mainDigit[2] = __getDigitMask(TheDateTime.month >> 4, TheDateTime.month >> 4, i);
 	mainDigit[3] = __getDigitMask(TheDateTime.month &0xf, TheDateTime.month & 0xf, i);
+	dotMask = (i < 2 ? 0x40 : (i <5 ? 0x20 : (i < 7 ? 0x10 : 0)));
 	break;
     }
     
@@ -105,8 +122,6 @@ static void __privateRender()
     data[0] = (mainDigit[0] <<3) | (( i == TheDateTime.wday - 1) ? 0x3: 0 );
 
     // Digit 1 at 8-10, space at 11, dot at 12, space at 13, digit 2 at 14-17
-    const uint8_t 
-	    dotMask =  (i == 1 || i == 5) ? 0x20 : 0;
 
     data[1] = (mainDigit[1] | dotMask | (mainDigit[2] << 7));
     
@@ -157,6 +172,7 @@ void Renderer_Update(uint8_t mainMode, uint8_t secondaryMode, _Bool animate)
   }
   else
   {
+    blinkStatus = BLINK_PERIOD;
     animationState = 1;
   }
 }
@@ -164,4 +180,5 @@ void Renderer_Update(uint8_t mainMode, uint8_t secondaryMode, _Bool animate)
 void Renderer_SetFlashMask(uint8_t mask)
 {
   blinkMask = mask; 
+  blinkStatus = BLINK_PERIOD - 2;
 }
