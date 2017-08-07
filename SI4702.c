@@ -23,7 +23,7 @@ uint8_t SI4702_regs[32];
   #define SEEK    0x01 // Start seeking
 
 #define POWERCONFIG_L 0x05
-  #define DISABLE 0x80 // Power up disable
+  #define DISABLE 0x40 // Power up disable
   #define ENABLE  0x01 // Powerup enable
 
 #define CHANNEL_H 0x06
@@ -168,6 +168,9 @@ void SI4702_SetFrequency_intern(uint16_t frequency) // Frequency in .1 MHz
 
 uint16_t SI4702_GetFrequency()
 {
+  if (! SI4702_regs[POWERCONFIG_L] & ENABLE )
+    return 0;
+  
   uint16_t frequency = SI4702_regs[READ_CHANNEL_H] & READ_CHANNEL_H_BITS;
   frequency <<= 8;
   frequency |= SI4702_regs[READ_CHANNEL_L];
@@ -341,8 +344,10 @@ void SI4702_PowerOn()
 void SI4702_PowerOff()
 {
   Read_SI4702(); // Some registers may have shifted during takeoff
-  SI4702_regs[POWERCONFIG_L] &= ~(ENABLE) ;
+  SI4702_regs[POWERCONFIG_L] |= DISABLE;
   Write_SI4702();
+  _delay_ms(125); // Allow oscillator to settle
+  Read_SI4702(); // Some registers may have shifted during takeoff
 }
 
 uint16_t targetFreq = 0;
@@ -367,15 +372,18 @@ void SI4702_Seek(_Bool seekUp)
   }
 }
 
-void Poll_SI4702()
+_Bool Poll_SI4702()
 {
+  _Bool returnValue = 0;
+  
   Read_SI4702(); // Some registers may have shifted during takeoff
- 
+  
   if (SI4702_regs[STATUS_RSSI_H] & STC)
   {
     // Stop tuning
     SI4702_regs[CHANNEL_H] &= ~TUNE;
     SI4702_regs[POWERCONFIG_H] &=~(SEEK);
+    returnValue = 1;
   }
   else
   {
@@ -394,4 +402,6 @@ void Poll_SI4702()
   }
   
   Write_SI4702();
+  
+  return returnValue;
 }

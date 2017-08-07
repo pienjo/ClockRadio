@@ -5,7 +5,7 @@
 #include "DateTime.h"
 #include "SI4702.h"
 
-static uint8_t previousHour = 0, previousMinute = 0, animationState = 0, myMainMode = 0, mySecondaryMode = 0;
+static uint8_t previousHour = 0, previousMinute = 0, animationState = 0, myMainMode = 0;
 
 static uint8_t blinkMask = 0x0;
 
@@ -41,14 +41,14 @@ static uint8_t __getDigitMask(uint8_t prevDigit, uint8_t currentDigit, int8_t ro
     return tworow & 0xf;
   }
 }
-static void __privateRender()
+static void __privateRender(const uint8_t secondaryMode)
 {
   uint8_t data[4]; // Data to be sent to the panels
 
   // Pre-compute the data for the 7-segment displays, it needs to be rotated
   uint8_t segmentDigits[8] = { 0 };
  
-  switch (mySecondaryMode)
+  switch (secondaryMode)
   {
     case SECONDARY_MODE_SEC:
       segmentDigits[DIGIT_2] = pgm_read_byte(BCDToSegment + (TheDateTime.sec >> 4));
@@ -153,30 +153,46 @@ static void __privateRender()
 
 }
 
-void Renderer_Tick()
+void Renderer_Tick(uint8_t secondaryMode)
 {
   blinkStatus = (blinkStatus + 1) % ( 2 * BLINK_PERIOD);
+  
+  _Bool doRender = 0;
+  
+  if (animationState & 0x80 || (blinkMask && (blinkStatus == 0 || blinkStatus == BLINK_PERIOD)))
+  {
+    animationState &= 0x7f;
+    doRender = 1;
+  }
   
   if (animationState)
   {
     animationState--;
-    __privateRender();
+    
+    doRender = 1;
+    
     if (animationState == 0)
     {
       previousHour = TheDateTime.hour;
       previousMinute = TheDateTime.min;
     }
-  } else if (blinkMask && (blinkStatus == 0 || blinkStatus == BLINK_PERIOD))
-    __privateRender();
+  } 
+  
+  if (doRender)
+    __privateRender(secondaryMode);
 }
 
-void Renderer_Update(uint8_t mainMode, uint8_t secondaryMode, _Bool animate)
+void Renderer_Update_Secondary()
+{
+  animationState |= 0x80;
+}
+
+void Renderer_Update_Main(const uint8_t mainMode,const _Bool animate)
 {
   _Bool dotmatrixChanged = (mainMode == MAIN_MODE_TIME && (previousHour != TheDateTime.hour || previousMinute != TheDateTime.min));
 
   myMainMode = mainMode;
-  mySecondaryMode = secondaryMode;
-
+  
   if (animate && dotmatrixChanged)
   {
     animationState = 9;
@@ -188,7 +204,7 @@ void Renderer_Update(uint8_t mainMode, uint8_t secondaryMode, _Bool animate)
   }
 }
 
-void Renderer_SetFlashMask(uint8_t mask)
+void Renderer_SetFlashMask(const uint8_t mask)
 {
   blinkMask = mask; 
   blinkStatus = BLINK_PERIOD - 2;

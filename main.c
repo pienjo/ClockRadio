@@ -43,6 +43,8 @@ struct DateTime TheDateTime;
 enum clockMode
 {
   modeShowTime,
+  modeShowRadio,
+  modeShowCount,
   modeAdjustYearTens,
   modeAdjustYearOnes,
   modeAdjustMonth,
@@ -53,15 +55,11 @@ enum clockMode
   modeAdjustMinsTens,
   modeAdjustMinsOnes,
   modeAdjustDone,
-  modeCount,
+  modeAdjustAbort,
+  modeAdjustCount,
 };
 
-volatile uint16_t event;
-
-ISR (INT0_vect) // External interrupt 0
-{
-  event |= CLOCK_UPDATE;
-}
+volatile uint16_t event ;
 
 uint8_t timer2_scaler = 2;
 
@@ -82,8 +80,6 @@ ISR (TIMER2_OVF_vect)
   // Only report buttons that haven't been reported yet.
   buttonsToReport &= (buttonDebounce[timer2_scaler] ^ buttonDebounce[3]);
  
-  buttonsToReport &= ~(0x02); // Exclude ext0
-
   if (buttonsToReport)
   {
     // Mark as handled
@@ -93,7 +89,6 @@ ISR (TIMER2_OVF_vect)
     uint8_t releasedButtons = buttonsToReport & (buttonDebounce[timer2_scaler]);
     
     // Report
-  
     event |= (uint16_t) pressedButtons | ((uint16_t)releasedButtons << 8);
   }
 
@@ -163,6 +158,83 @@ void RadioOff()
   radioIsOn = 0;
 }
 
+void HandleEditUp(const uint8_t editMode, uint8_t *const editDigit, const uint8_t editMaxValue)
+{
+  switch(editMode & EDIT_MODE_MASK)
+  {
+    case EDIT_MODE_ONES:
+    {
+      uint8_t v = *editDigit;
+      v = v&0x0f;
+      if (v < 9)
+	v++;
+      *editDigit = (*editDigit & 0xf0) | v;
+      break;
+    }
+    case EDIT_MODE_TENS:
+    {
+      uint8_t v = *editDigit;
+      v = v&0xf0;
+      if (v < 0x90)
+	v+= 0x10;
+      *editDigit = (*editDigit & 0x0f) | v;
+      break;
+    }
+    case EDIT_MODE_NUMBER:
+    {
+      (*editDigit)++;
+      if ((*editDigit & 0x0f) == 0x0a)
+      {
+	*editDigit += 6; 
+      }
+      break;
+    }
+  }
+  
+  if (*editDigit > editMaxValue)
+    *editDigit = editMaxValue;
+}
+
+void HandleEditDown(const uint8_t editMode, uint8_t *const editDigit, const uint8_t editMaxValue)
+{
+  switch(editMode & EDIT_MODE_MASK)
+  {
+    case EDIT_MODE_ONES:
+    {
+      uint8_t v = *editDigit;
+      v = v&0x0f;
+      if (v > 0)
+	v--;
+      *editDigit = (*editDigit & 0xf0) | v;
+      break;
+    }
+    case EDIT_MODE_TENS:
+    {
+      uint8_t v = *editDigit;
+      v = v&0xf0;
+      if (v > 0x00)
+	v-= 0x10;
+      *editDigit = (*editDigit & 0x0f) | v;
+      break;
+    }
+    case EDIT_MODE_NUMBER:
+    {
+      if (*editDigit > 0)
+      {
+	(*editDigit)--;
+	if ((*editDigit & 0x0f) == 0x0f)
+	{
+	  *editDigit -= 6; 
+	}
+      }
+      break;
+    }
+  }
+  
+  if ((editMode & EDIT_MODE_ONEBASE) && (*editDigit == 0))
+    *editDigit = 1;
+} 
+
 int main(void)
 {
   // Enable output on PORT C2 (amplifier control)
@@ -182,12 +254,7 @@ int main(void)
   DDRD = 0;
   PORTD = ~(_BV(PORTD2));
 
-  // Setup external interrupt for the 1Hz clock
-  
-  EICRA = _BV(ISC01);
-  EIMSK = _BV(INT0);
-
-  TIMSK2 = _BV(TOIE2); // Enable overflow interrupt, will trigger every 16 ms - but don't start the timer yet.
+  TIMSK2 = _BV(TOIE2); // Enable overflow interrupt, will trigger every 16 ms
   
   // Setup timer 2: /1024 prescaler, 
   TCCR2B = _BV(CS22) | _BV(CS21) | _BV(CS20); 
@@ -201,6 +268,8 @@ int main(void)
   uint8_t *editDigit = 0;
   uint8_t editMode = 0;
   uint8_t editMaxValue = 0x99;
+  
+  sei(); // Enable interrupts. This will immediately trigger a port change interrupt; sink these events.
   
   while (1)
   {
@@ -217,13 +286,20 @@ int main(void)
 
     if (eventToHandle & CLOCK_TICK)
     {
-      Renderer_Tick();
+      Renderer_Tick(secMode);
       if(setTimeout && setTimeout < SET_TICKS)
       {
         setTimeout++;
         if(setTimeout == SET_TICKS)
         {
-          newDeviceMode++;
+	  // Long press on button 1.
+	  if (newDeviceMode == modeShowTime)
+	    newDeviceMode = modeAdjustYearTens;
+	  else if (newDeviceMode >= modeAdjustYearTens && newDeviceMode < modeAdjustDone)
+	  {
+	    // Abort setting time
+	    newDeviceMode = modeAdjustAbort;
+	  }
         }
       }
     }
@@ -232,12 +308,73 @@ int main(void)
     {
       if (deviceMode == modeShowTime)
         setTimeout = 1;
-      else
+    }
+    
+    if (eventToHandle & BUTTON1_RELEASE) 
+    {
+      if (setTimeout < SET_TICKS)
       {
-        newDeviceMode++;
+	newDeviceMode++; // Released before timeout
+	if (newDeviceMode == modeShowCount)
+	  newDeviceMode = modeShowTime;
       }
+      setTimeout = 0;
     }
 
+    if (eventToHandle & BUTTON2_CLICK)
+    {
+      if (radioIsOn)
+	RadioOff();
+      else
+	RadioOn();
+    }
+    
+    if (eventToHandle & BUTTON3_CLICK)
+    {
+      // down
+      if (editMode)
+      {
+	HandleEditDown(editMode, editDigit, editMaxValue);
+      
+	updateScreen = 1;
+	if (editMode < modeAdjustHoursTens)
+	  UpdateDOW();
+      }
+      else if (newDeviceMode == modeShowRadio && radioIsOn)
+      {
+	uint16_t freq = SI4702_GetFrequency();
+	if (freq > 875 )
+	  freq--;
+	else
+	  freq=1080;
+	
+	SI4702_SetFrequency( freq );
+      }
+    }    
+    
+    if (eventToHandle & BUTTON4_CLICK)
+    {
+      // up
+      if (editMode)
+      {
+	HandleEditUp(editMode, editDigit, editMaxValue);
+    
+	updateScreen = 1;
+	if (editMode < modeAdjustHoursTens)
+	  UpdateDOW();
+      }
+      else if (newDeviceMode == modeShowRadio && radioIsOn)
+      {
+	uint16_t freq = SI4702_GetFrequency();
+	if (freq < 1080 )
+	  freq++;
+	else
+	  freq=875;
+	
+	SI4702_SetFrequency( freq );
+      }
+    }
+    
     if (newDeviceMode != deviceMode)
     {
       // Update the screen.
@@ -297,12 +434,26 @@ int main(void)
           editMode = EDIT_MODE_ONES;
           break;
         case modeAdjustDone:
+	  // Write out time
+          Write_DS1307_DateTime();
+	  
+	  // fall-through
+	case modeAdjustAbort:
           Renderer_SetFlashMask(0);
           editMode = 0;
-          // Write out time
-          Write_DS1307_DateTime();
-          newDeviceMode = modeShowTime;
+	  newDeviceMode = modeShowTime;
+	  
+	  // fall-through
+	case modeShowTime:
+          
+	  secMode = SECONDARY_MODE_SEC;
+	  mainMode = MAIN_MODE_TIME;
           break;
+	case modeShowRadio:
+	  mainMode = MAIN_MODE_TIME;
+	  secMode = SECONDARY_MODE_RADIO;
+	  Renderer_Update_Secondary();
+	  break;
         default:
           break;
       }
@@ -312,113 +463,26 @@ int main(void)
     {
       if (eventToHandle & CLOCK_UPDATE)
       {
-	if (deviceMode == modeShowTime)
+	if (deviceMode == modeShowTime || deviceMode == modeShowRadio)
 	{
 	  Read_DS1307_DateTime();
 	  updateScreen = 1;
 	}
-	
+      }
+      if (eventToHandle & CLOCK_TICK)
+      {
+	if (deviceMode == modeShowRadio && radioIsOn && Poll_SI4702())
+	{
+	  Renderer_Update_Secondary();
+	}
       }
     } 
-    
-    if (eventToHandle & BUTTON1_RELEASE)
-    {
-      setTimeout = 0;
-    }
-    
-    if (editMode)
-    {
-      if ((eventToHandle & BUTTON2_CLICK || eventToHandle & BUTTON4_CLICK))
-      {
-        // up
 
-        switch(editMode & EDIT_MODE_MASK)
-        {
-          case EDIT_MODE_ONES:
-          {
-            uint8_t v = *editDigit;
-            v = v&0x0f;
-            if (v < 9)
-              v++;
-            *editDigit = (*editDigit & 0xf0) | v;
-            break;
-          }
-          case EDIT_MODE_TENS:
-          {
-            uint8_t v = *editDigit;
-            v = v&0xf0;
-            if (v < 0x90)
-              v+= 0x10;
-            *editDigit = (*editDigit & 0x0f) | v;
-            break;
-          }
-          case EDIT_MODE_NUMBER:
-          {
-            (*editDigit)++;
-            if ((*editDigit & 0x0f) == 0x0a)
-            {
-              *editDigit += 6; 
-            }
-            break;
-          }
-        }
-        
-        if (*editDigit > editMaxValue)
-          *editDigit = editMaxValue;
-
-        updateScreen = 1;
-        UpdateDOW();
-      }
-
-      if (eventToHandle & BUTTON3_CLICK)
-      {
-        // down
-        switch(editMode & EDIT_MODE_MASK)
-        {
-          case EDIT_MODE_ONES:
-          {
-            uint8_t v = *editDigit;
-            v = v&0x0f;
-            if (v > 0)
-              v--;
-            *editDigit = (*editDigit & 0xf0) | v;
-            break;
-          }
-          case EDIT_MODE_TENS:
-          {
-            uint8_t v = *editDigit;
-            v = v&0xf0;
-            if (v > 0x00)
-              v-= 0x10;
-            *editDigit = (*editDigit & 0x0f) | v;
-            break;
-          }
-          case EDIT_MODE_NUMBER:
-          {
-            if (*editDigit > 0)
-            {
-              (*editDigit)--;
-              if ((*editDigit & 0x0f) == 0x0f)
-              {
-                *editDigit -= 6; 
-              }
-            }
-            break;
-          }
-        }
-        
-        if ((editMode & EDIT_MODE_ONEBASE) && (*editDigit == 0))
-          *editDigit = 1;
-        
-        UpdateDOW();
-        updateScreen = 1;
-      }
-    }
 
     if (updateScreen)
     {
       // Something happened, update display.
-      Renderer_Update(mainMode, secMode,(eventToHandle & CLOCK_UPDATE) && (deviceMode == modeShowTime) );
+      Renderer_Update_Main(mainMode, (eventToHandle & CLOCK_UPDATE) && (deviceMode == modeShowTime || deviceMode == modeShowRadio) );
     }
 
     if (eventToHandle == 0)

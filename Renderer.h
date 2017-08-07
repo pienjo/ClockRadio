@@ -11,12 +11,14 @@
 #define SECONDARY_MODE_YEAR  1
 #define SECONDARY_MODE_RADIO 2
 
-void Renderer_Tick(); // Must be called regularly for animations 
+void Renderer_Tick( const uint8_t secondaryMode ); // Must be called regularly for animations 
 
 // Update contents. if _animate is true, use "rolling" animation.
-void Renderer_Update(uint8_t mainMode, uint8_t secondaryMode, bool animate);
+void Renderer_Update_Main(const uint8_t mainMode,const bool animate);
+
+void Renderer_Update_Secondary();
 
 // Set which digits should be flashing. bit 7 = leftmost digit, bit 0 = rightmost digit
-void Renderer_SetFlashMask(uint8_t mask);
+void Renderer_SetFlashMask(const uint8_t mask);
 #endif
 
