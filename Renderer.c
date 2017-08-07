@@ -64,14 +64,25 @@ static void __privateRender()
     {
       uint16_t freq = SI4702_GetFrequency();
 
-      segmentDigits[DIGIT_4] = pgm_read_byte(BCDToSegment + (freq%10));
-      freq /= 10;
-      segmentDigits[DIGIT_3] = pgm_read_byte(BCDToSegment + (freq%10)) | SEG_DP;
-      freq /= 10;
-      segmentDigits[DIGIT_2] = pgm_read_byte(BCDToSegment + (freq%10));
-      freq /= 10;
-      if(freq)
-        segmentDigits[DIGIT_1] = pgm_read_byte(BCDToSegment + (freq%10));
+      if (freq == 0)
+      {
+	// Radio disabled
+	segmentDigits[DIGIT_1] = SEG_g;
+	segmentDigits[DIGIT_2] = SEG_g;
+	segmentDigits[DIGIT_3] = SEG_g;
+	segmentDigits[DIGIT_4] = SEG_g;
+      }
+      else
+      {
+	segmentDigits[DIGIT_4] = pgm_read_byte(BCDToSegment + (freq%10));
+	freq /= 10;
+	segmentDigits[DIGIT_3] = pgm_read_byte(BCDToSegment + (freq%10)) | SEG_DP;
+	freq /= 10;
+	segmentDigits[DIGIT_2] = pgm_read_byte(BCDToSegment + (freq%10));
+	freq /= 10;
+	if(freq)
+	  segmentDigits[DIGIT_1] = pgm_read_byte(BCDToSegment + (freq%10));
+      }
     }
   }
 
