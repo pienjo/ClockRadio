@@ -354,13 +354,19 @@ void SI4702_SetFrequency(uint16_t freq)
     targetFreq = freq;
 }
 
-void SI4702_Seek()
+void SI4702_Seek(_Bool seekUp)
 {
   if ((SI4702_regs[POWERCONFIG_H] & SEEK) == 0)
   {
+    if (seekUp)
+      SI4702_regs[POWERCONFIG_H] |= SEEKUP;
+    else
+      SI4702_regs[POWERCONFIG_H] &= ~SEEKUP;
+      
     seekStart = 1;
   }
 }
+
 void Poll_SI4702()
 {
   Read_SI4702(); // Some registers may have shifted during takeoff
