@@ -46,6 +46,9 @@
 #define DIGIT_3 6
 #define DIGIT_4 0 
 
+#define DIGIT_LEFT_LED 4
+#define DIGIT_RIGHT_LED 1
+
 #define SEG_DP 0x10
 #define SEG_a  0x04
 #define SEG_b  0x02
@@ -54,6 +57,9 @@
 #define SEG_e  0x20
 #define SEG_f  0x01
 #define SEG_g  0x40
+
+#define SEG_LEFT_LED 0xff
+#define SEG_RIGHT_LED 0xff
 
 // Corresponds to the "Code B" font listed in the MAX7219 datasheet, transposed 
 extern const uint8_t PROGMEM BCDToSegment[16];
