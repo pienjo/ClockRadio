@@ -5,7 +5,7 @@
 #include "DateTime.h"
 #include "SI4702.h"
 
-static uint8_t previousHour = 0, previousMinute = 0, animationState = 0, myMainMode = 0;
+static uint8_t previousHour = 0, previousMinute = 0, animationState = 0, myMainMode = 0, ledState = 0;
 
 static uint8_t blinkMask = 0x0;
 
@@ -47,7 +47,19 @@ static void __privateRender(const uint8_t secondaryMode)
 
   // Pre-compute the data for the 7-segment displays, it needs to be rotated
   uint8_t segmentDigits[8] = { 0 };
- 
+  
+  const uint8_t leftLedState = ledState & 0x0f;
+  if (leftLedState == 3 || ( leftLedState == 2 && (blinkStatus < BLINK_PERIOD * 3 / 2)) || (leftLedState == 1 && (blinkStatus < BLINK_PERIOD / 2)))
+  {
+    segmentDigits[DIGIT_LEFT_LED] = SEG_LEFT_LED;
+  }
+  
+  const uint8_t rightLedState = ledState >> 4;
+  if (rightLedState == 3 || ( rightLedState == 2 && (blinkStatus < BLINK_PERIOD * 3 / 2)) || (rightLedState == 1 && (blinkStatus < BLINK_PERIOD / 2)))
+  {
+    segmentDigits[DIGIT_RIGHT_LED] = SEG_RIGHT_LED;
+  }
+  
   switch (secondaryMode)
   {
     case SECONDARY_MODE_SEC:
@@ -83,6 +95,16 @@ static void __privateRender(const uint8_t secondaryMode)
 	if(freq)
 	  segmentDigits[DIGIT_1] = pgm_read_byte(BCDToSegment + (freq%10));
       }
+      break;
+    }
+    case SECONDARY_MODE_VOLUME:
+    {
+      uint8_t vol = SI4702_GetVolume();
+      segmentDigits[DIGIT_4] = SEG_d;
+      segmentDigits[DIGIT_3] = pgm_read_byte(BCDToSegment + (vol%10));
+      segmentDigits[DIGIT_2] = pgm_read_byte(BCDToSegment + (vol/10));
+      segmentDigits[DIGIT_1] = SEG_d;
+      break;
     }
   }
 
@@ -159,7 +181,7 @@ void Renderer_Tick(uint8_t secondaryMode)
   
   _Bool doRender = 0;
   
-  if (animationState & 0x80 || (blinkMask && (blinkStatus == 0 || blinkStatus == BLINK_PERIOD)))
+  if (animationState & 0x80 || (blinkMask && (blinkStatus == 0 || blinkStatus == BLINK_PERIOD)) || ledState != 0)
   {
     animationState &= 0x7f;
     doRender = 1;
@@ -185,6 +207,12 @@ void Renderer_Tick(uint8_t secondaryMode)
 void Renderer_Update_Secondary()
 {
   animationState |= 0x80;
+}
+
+void Renderer_SetLed(const uint8_t leftLedState, const uint8_t rightLedState)
+{
+  ledState = (leftLedState <<4 ) | (rightLedState & 0x0f);
+  Renderer_Update_Secondary();
 }
 
 void Renderer_Update_Main(const uint8_t mainMode,const _Bool animate)
