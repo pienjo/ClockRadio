@@ -4,9 +4,11 @@
 void Init_SI4702();
 _Bool Poll_SI4702();
 void SI4702_Seek(_Bool seekUp);
+void SI4702_Tune(_Bool tuneUp);
 uint16_t SI4702_GetFrequency();
 void SI4702_SetFrequency(uint16_t frequency);
 void SI4702_SetVolume(uint8_t volume);
+uint8_t SI4702_GetVolume();
 void SI4702_PowerOn();
 void SI4702_PowerOff();
 #endif

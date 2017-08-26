@@ -18,8 +18,9 @@ uint8_t SI4702_regs[32];
   #define DSMUTE  0x80 // Disable softmute
   #define DMUTE   0x40 // Disable mute
   #define MONO    0x20 // mono
-  #define SKMODE  0x08 // Seek mode: stop seeking at band end
-  #define SEEKUP  0x04 // Seek up
+  #define RDSM	  0x08 // RDS mode (not supported)
+  #define SKMODE  0x04 // Seek mode: stop seeking at band end
+  #define SEEKUP  0x02 // Seek up
   #define SEEK    0x01 // Start seeking
 
 #define POWERCONFIG_L 0x05
@@ -35,7 +36,7 @@ uint8_t SI4702_regs[32];
 
 #define SYSCONFIG1_H 0x08
   #define RDSIEN  0x80 // RDS interrupt enable (not supported)
-  #define STCIEN  0x40 // Seek/Tune interrupt enable (not bonded out)
+  #define STCIEN  0x40 // Seek/Tune interrupt enable (not supplied by breakout board)
   #define RDS     0x10 // RDS enable (not supported)
   #define DE      0x08 // De-emphasis. 0 for USA, 1 for rest of world
   #define AGCD    0x04 // Automatic Gain Control disable
@@ -144,6 +145,7 @@ uint8_t SI4702_regs[32];
 #define READ_CHANNEL_L 0x17
   // ReadChannel[7:0]
 
+void Write_SI4702();
 void SI4702_SetFrequency_intern(uint16_t frequency) // Frequency in .1 MHz 
 {
   if ((SI4702_regs[SYSCONFIG2_L] & BAND_BITS) != BAND_US_EU)
@@ -200,6 +202,9 @@ void SI4702_SetSeekThreshold(uint8_t threshold)
 // Set volume ( 0 = mute, 30 = max)
 void SI4702_SetVolume(uint8_t volume)
 {
+  if (volume > 30)
+    return;
+    
   if (volume > 15)
   {
     // Disable VOLEXT
@@ -213,6 +218,17 @@ void SI4702_SetVolume(uint8_t volume)
   }
   SI4702_regs[SYSCONFIG2_L] &= ~VOLUME_BITS;
   SI4702_regs[SYSCONFIG2_L] |= (volume & 0x0f);
+  
+  Write_SI4702();
+}
+
+uint8_t SI4702_GetVolume()
+{
+  uint8_t ret = SI4702_regs[SYSCONFIG2_L] & VOLUME_BITS;
+  if ((SI4702_regs[SYSCONFIG3_H] & VOLEXT) == 0)
+    ret += 15;
+  
+  return ret;
 }
 
 
@@ -337,7 +353,6 @@ void SI4702_PowerOn()
   SI4702_regs[SYSCONFIG1_H] |= DE;  // Use European  de-emphasis
   SI4702_regs[SYSCONFIG2_L]  = SPACE_100KHZ | BAND_US_EU;  // European spacing
   SI4702_SetSeekThreshold(20);
-  SI4702_SetVolume(29); 
   Write_SI4702();
 }
 
@@ -351,7 +366,12 @@ void SI4702_PowerOff()
 }
 
 uint16_t targetFreq = 0;
-_Bool seekStart = 0;
+enum {
+    seekIdle,
+    seekUp,
+    seekDown,
+    seekBusy,
+  } seekMode = seekIdle;
 
 void SI4702_SetFrequency(uint16_t freq)
 {
@@ -361,15 +381,35 @@ void SI4702_SetFrequency(uint16_t freq)
 
 void SI4702_Seek(_Bool seekUp)
 {
-  if ((SI4702_regs[POWERCONFIG_H] & SEEK) == 0)
+  if (seekMode == seekIdle)
   {
     if (seekUp)
-      SI4702_regs[POWERCONFIG_H] |= SEEKUP;
+      seekMode = seekUp;
     else
-      SI4702_regs[POWERCONFIG_H] &= ~SEEKUP;
-      
-    seekStart = 1;
+      seekMode = seekDown;
   }
+}
+
+void SI4702_Tune(_Bool seekUp)
+{
+  uint16_t freq = SI4702_GetFrequency();
+  
+  if (seekUp)
+  {
+    if (freq < 1080 )
+      freq++;
+    else
+      freq=875;    
+  }
+  else
+  {
+    if (freq > 875 )
+      freq--;
+    else
+      freq=1080;
+  }
+  
+  targetFreq = freq ;
 }
 
 _Bool Poll_SI4702()
@@ -383,6 +423,7 @@ _Bool Poll_SI4702()
     // Stop tuning
     SI4702_regs[CHANNEL_H] &= ~TUNE;
     SI4702_regs[POWERCONFIG_H] &=~(SEEK);
+    seekMode = seekIdle;
     returnValue = 1;
   }
   else
@@ -391,13 +432,25 @@ _Bool Poll_SI4702()
     {
       SI4702_SetFrequency_intern(targetFreq);
       targetFreq = 0;
-     
+      // Abort seek, should it be in progress      
+      //SI4702_regs[POWERCONFIG_H] &= (SEEK);
       SI4702_regs[CHANNEL_H] |= TUNE;
     } 
-    else if (seekStart)
+    
+    switch(seekMode)
     {
-      SI4702_regs[POWERCONFIG_H] |= (SEEK);
-      seekStart = 0;
+      case seekIdle:
+      case seekBusy:
+	break;
+      case seekUp:
+	SI4702_regs[POWERCONFIG_H] |= SEEKUP | SEEK;
+	seekMode = seekBusy;
+	break;
+      case seekDown:
+	SI4702_regs[POWERCONFIG_H] &= ~SEEKUP;
+	SI4702_regs[POWERCONFIG_H] |= (SEEK);
+	seekMode = seekBusy;
+	break;
     }
   }
   
