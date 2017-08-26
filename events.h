@@ -1,0 +1,21 @@
+#ifndef __EVENTS_H__
+#define __EVENTS_H__
+
+#define BUTTON1_CLICK 0x0001 
+#define BUTTON2_CLICK 0x0002 
+#define CLOCK_UPDATE  0x0004 // At 4, because it should mask bit 2.
+#define BUTTON3_CLICK 0x0008
+#define BUTTON4_CLICK 0x0010
+#define BUTTON5_CLICK 0x0020
+#define BUTTON6_CLICK 0x0040
+#define BUTTON7_CLICK 0x0080
+#define BUTTON1_RELEASE 0x0100
+#define BUTTON2_RELEASE 0x0200
+#define CLOCK_TICK      0x0400
+#define BUTTON3_RELEASE 0x0800
+#define BUTTON4_RELEASE 0x1000
+#define BUTTON5_RELEASE 0x2000
+#define BUTTON6_RELEASE 0x4000
+#define BUTTON7_RELEASE 0x8000
+
+#endif

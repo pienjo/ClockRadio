@@ -3,6 +3,8 @@
 #include "Renderer.h"
 #include "Panels.h"
 #include "DateTime.h"
+#include "events.h"
+#include "longpress.h"
 #include "DS1307.h"
 #include "SI4702.h"
 
@@ -15,36 +17,26 @@
 
 struct DateTime TheDateTime;
 
-#define BUTTON1_CLICK 0x0001 
-#define BUTTON2_CLICK 0x0002 
-#define CLOCK_UPDATE  0x0004 // At 4, because it should mask bit 2.
-#define BUTTON3_CLICK 0x0008
-#define BUTTON4_CLICK 0x0010
-#define BUTTON5_CLICK 0x0020
-#define BUTTON6_CLICK 0x0040
-#define BUTTON7_CLICK 0x0080
-#define BUTTON1_RELEASE 0x0100
-#define BUTTON2_RELEASE 0x0200
-#define CLOCK_TICK      0x0400
-#define BUTTON3_RELEASE 0x0800
-#define BUTTON4_RELEASE 0x1000
-#define BUTTON5_RELEASE 0x2000
-#define BUTTON6_RELEASE 0x4000
-#define BUTTON7_RELEASE 0x8000
-
-#define SET_TICKS 20
-
 #define EDIT_MODE_ONES     0x1
 #define EDIT_MODE_TENS     0x2
 #define EDIT_MODE_NUMBER   (EDIT_MODE_ONES |EDIT_MODE_TENS)
 #define EDIT_MODE_MASK     0x03
 #define EDIT_MODE_ONEBASE 0x04
 
+#define DS1307_RADIOSETTINGS 0
+
+
+struct RadioSettings
+{
+  uint16_t frequency;
+  uint8_t  volume;
+};
+
 enum clockMode
 {
   modeShowTime,
   modeShowRadio,
-  modeShowCount,
+  modeShowRadio_Volume,
   modeAdjustYearTens,
   modeAdjustYearOnes,
   modeAdjustMonth,
@@ -54,10 +46,7 @@ enum clockMode
   modeAdjustHoursOnes,
   modeAdjustMinsTens,
   modeAdjustMinsOnes,
-  modeAdjustDone,
-  modeAdjustAbort,
-  modeAdjustCount,
-};
+} ;
 
 volatile uint16_t event ;
 
@@ -92,8 +81,6 @@ ISR (TIMER2_OVF_vect)
     event |= (uint16_t) pressedButtons | ((uint16_t)releasedButtons << 8);
   }
 
-
-  
   if (timer2_scaler == 0)
   {
     event |= CLOCK_TICK; // results in ~48 ms per call
@@ -141,19 +128,34 @@ _Bool radioIsOn = 0;
   
 void RadioOn()
 {
-  // Amplifier control is active low
-  PORTC = PORTC & ~( _BV(PORTC2));
-  int16_t frequency;
-  Read_DS1307_RAM((uint8_t *)&frequency, 0, 2);
-  SI4702_SetFrequency(frequency);
+  // Retrieve previous channel and volume
+  struct RadioSettings settings;
+  
+  Read_DS1307_RAM((uint8_t *)&settings, DS1307_RADIOSETTINGS, sizeof(settings));
+  
   SI4702_PowerOn();
+  
+  SI4702_SetFrequency(settings.frequency);
+  SI4702_SetVolume(settings.volume);
+  
+  Poll_SI4702();
+  // Amplifier control is active low
+  PORTC = PORTC & ~( _BV(PORTC2)); 
   radioIsOn = 1;  
 }
 
 void RadioOff()
 {
-   // Amplifier control is active low
+  // Amplifier control is active low
   PORTC = PORTC | _BV(PORTC2);
+  // Store current frequency and volume
+  
+  struct RadioSettings settings;
+  settings.frequency = SI4702_GetFrequency();
+  settings.volume = SI4702_GetVolume();
+  
+  Write_DS1307_RAM((uint8_t *)&settings, DS1307_RADIOSETTINGS, sizeof(settings));
+  
   SI4702_PowerOff();
   radioIsOn = 0;
 }
@@ -262,7 +264,6 @@ int main(void)
   uint8_t secMode = SECONDARY_MODE_SEC;
   uint8_t mainMode = MAIN_MODE_TIME;
 
-  uint8_t setTimeout = 0;
   enum clockMode deviceMode = modeShowTime;
 
   uint8_t *editDigit = 0;
@@ -282,96 +283,160 @@ int main(void)
       eventToHandle = event;
       event = 0;
     }
+    
+    struct longPressResult longPressEvent = GetLongPress(eventToHandle);
+    
     enum clockMode newDeviceMode = deviceMode;
 
     if (eventToHandle & CLOCK_TICK)
     {
-      Renderer_Tick(secMode);
-      if(setTimeout && setTimeout < SET_TICKS)
+      if (radioIsOn && Poll_SI4702() && deviceMode == modeShowRadio)
       {
-        setTimeout++;
-        if(setTimeout == SET_TICKS)
-        {
-	  // Long press on button 1.
-	  if (newDeviceMode == modeShowTime)
-	    newDeviceMode = modeAdjustYearTens;
-	  else if (newDeviceMode >= modeAdjustYearTens && newDeviceMode < modeAdjustDone)
-	  {
-	    // Abort setting time
-	    newDeviceMode = modeAdjustAbort;
-	  }
-        }
+	Renderer_Update_Secondary();
       }
-    }
-    
-    if (eventToHandle & BUTTON1_CLICK)
-    {
-      if (deviceMode == modeShowTime)
-        setTimeout = 1;
-    }
-    
-    if (eventToHandle & BUTTON1_RELEASE) 
-    {
-      if (setTimeout < SET_TICKS)
-      {
-	newDeviceMode++; // Released before timeout
-	if (newDeviceMode == modeShowCount)
-	  newDeviceMode = modeShowTime;
-      }
-      setTimeout = 0;
-    }
-
-    if (eventToHandle & BUTTON2_CLICK)
-    {
-      if (radioIsOn)
-	RadioOff();
-      else
-	RadioOn();
-    }
-    
-    if (eventToHandle & BUTTON3_CLICK)
-    {
-      // down
-      if (editMode)
-      {
-	HandleEditDown(editMode, editDigit, editMaxValue);
       
-	updateScreen = 1;
-	if (editMode < modeAdjustHoursTens)
-	  UpdateDOW();
-      }
-      else if (newDeviceMode == modeShowRadio && radioIsOn)
-      {
-	uint16_t freq = SI4702_GetFrequency();
-	if (freq > 875 )
-	  freq--;
-	else
-	  freq=1080;
-	
-	SI4702_SetFrequency( freq );
-      }
-    }    
+      Renderer_Tick(secMode);
+    }
     
-    if (eventToHandle & BUTTON4_CLICK)
+    // Handle keypresses
+    switch ( deviceMode )
     {
-      // up
-      if (editMode)
+      case modeShowTime:
       {
-	HandleEditUp(editMode, editDigit, editMaxValue);
-    
-	updateScreen = 1;
-	if (editMode < modeAdjustHoursTens)
-	  UpdateDOW();
+	if (eventToHandle & BUTTON2_CLICK)
+	{
+	  MarkLongPressHandled(BUTTON2_CLICK);
+	  if (radioIsOn)
+	  {
+	    RadioOff();
+	  }
+	  else
+	  {
+	    RadioOn();
+	    newDeviceMode = modeShowRadio;
+	  }
+	}
+	if (longPressEvent.longPress & BUTTON1_CLICK)
+	{
+	  // adjust time
+	  newDeviceMode = modeAdjustYearTens;
+	} else if (longPressEvent.shortPress & BUTTON1_CLICK && radioIsOn)
+	{
+	  newDeviceMode = modeShowRadio;
+	} else if (eventToHandle & CLOCK_UPDATE)
+	{
+	  Read_DS1307_DateTime();
+	  updateScreen = 1;
+	}
+	break;
       }
-      else if (newDeviceMode == modeShowRadio && radioIsOn)
+      case modeShowRadio:
+      case modeShowRadio_Volume:
       {
-	uint16_t freq = SI4702_GetFrequency();
-	if (freq < 1080 )
-	  freq++;
-	else
-	  freq=875;
 	
-	SI4702_SetFrequency( freq );
+	if (longPressEvent.shortPress & BUTTON2_CLICK)
+	{
+	  RadioOff();
+	  newDeviceMode = modeShowTime;
+	  break;
+	}
+	
+	if (eventToHandle & CLOCK_UPDATE)
+	{
+	  Read_DS1307_DateTime();
+	  updateScreen = 1;
+	}
+	
+	if (eventToHandle & BUTTON1_CLICK)
+	{
+	  MarkLongPressHandled(BUTTON1_CLICK);
+	  newDeviceMode = modeShowTime;
+	  break;
+	} 
+	
+	if (PIND & BUTTON2_CLICK) 
+	{
+	  // Radio button is not pressed, use up-down keys for tuning
+	  newDeviceMode = modeShowRadio;
+	  if (radioIsOn)
+	  {
+	    if (eventToHandle & BUTTON3_CLICK)
+	    {
+	      SI4702_Tune(0);
+	    } else if (eventToHandle & BUTTON4_CLICK)
+	    {
+	      SI4702_Tune(1);
+	    } else if (longPressEvent.longPress & BUTTON3_CLICK)
+	    {
+	      SI4702_Seek(0);
+	    } else if (longPressEvent.longPress & BUTTON4_CLICK)
+	    {
+	      SI4702_Seek(1);
+	    }
+	  }
+	} else
+	{
+	  // Radio button is pressed, use up-down keys for volume
+	  newDeviceMode = modeShowRadio_Volume;
+	  if (radioIsOn)
+	  {
+	    if (eventToHandle & BUTTON3_CLICK)
+	    {
+	      SI4702_SetVolume(SI4702_GetVolume() - 1);
+	      Renderer_Update_Secondary();
+	    } else if (eventToHandle & BUTTON4_CLICK)
+	    {
+	      SI4702_SetVolume(SI4702_GetVolume() + 1);
+	      Renderer_Update_Secondary();
+	    }
+	  }
+	}
+	break;
+      }
+      case modeAdjustYearTens:
+      case modeAdjustYearOnes:
+      case modeAdjustMonth:
+      case modeAdjustDayTens:
+      case modeAdjustDayOnes:
+      case modeAdjustHoursTens:
+      case modeAdjustHoursOnes:
+      case modeAdjustMinsTens:
+      case modeAdjustMinsOnes:
+      {
+	if (longPressEvent.longPress & BUTTON1_CLICK)
+	{
+	  // Abort setting time
+	  newDeviceMode = modeShowTime;
+	} else if (longPressEvent.shortPress & BUTTON1_CLICK)
+	{
+	  if (deviceMode < modeAdjustMinsOnes)
+	  {
+	    newDeviceMode++;
+	  }
+	  else
+	  {
+	    // Done setting time
+	    Write_DS1307_DateTime();
+	    newDeviceMode = modeShowTime;
+	  }
+	} else if (eventToHandle & BUTTON3_CLICK)
+	{
+	  updateScreen = 1;
+	  HandleEditDown(editMode, editDigit, editMaxValue);
+	  if (deviceMode < modeAdjustHoursTens)
+	  {
+	    UpdateDOW();   
+	  }
+	} else if (eventToHandle & BUTTON4_CLICK)
+	{
+	  updateScreen = 1;
+	  HandleEditUp(editMode, editDigit, editMaxValue);
+	  if (deviceMode < modeAdjustHoursTens)
+	  {
+	    UpdateDOW();   
+	  }
+	}
+	break;
       }
     }
     
@@ -383,7 +448,6 @@ int main(void)
         case modeAdjustYearTens:
           mainMode = MAIN_MODE_DATE;
           secMode = SECONDARY_MODE_YEAR;
-          updateScreen = 1;
 
           Renderer_SetFlashMask(0x2); 
           editDigit = &TheDateTime.year;
@@ -414,7 +478,6 @@ int main(void)
           mainMode = MAIN_MODE_TIME;
           secMode = SECONDARY_MODE_SEC;
           editMode = EDIT_MODE_TENS;
-          updateScreen = 1;
           editMaxValue = 0x23;
           editDigit = &TheDateTime.hour;
           Renderer_SetFlashMask(0x80); 
@@ -433,19 +496,9 @@ int main(void)
           Renderer_SetFlashMask(0x10); 
           editMode = EDIT_MODE_ONES;
           break;
-        case modeAdjustDone:
-	  // Write out time
-          Write_DS1307_DateTime();
-	  
-	  // fall-through
-	case modeAdjustAbort:
-          Renderer_SetFlashMask(0);
-          editMode = 0;
-	  newDeviceMode = modeShowTime;
-	  
-	  // fall-through
-	case modeShowTime:
-          
+        case modeShowTime:
+	  Renderer_SetFlashMask(0);
+	  editMode = 0;	  
 	  secMode = SECONDARY_MODE_SEC;
 	  mainMode = MAIN_MODE_TIME;
           break;
@@ -454,30 +507,19 @@ int main(void)
 	  secMode = SECONDARY_MODE_RADIO;
 	  Renderer_Update_Secondary();
 	  break;
+	case modeShowRadio_Volume:
+	  mainMode = MAIN_MODE_TIME;
+	  secMode = SECONDARY_MODE_VOLUME;
+	  Renderer_Update_Secondary();
+	  break;
         default:
           break;
       }
+
+      updateScreen = 1;
+
       deviceMode = newDeviceMode;
     }
-    else
-    {
-      if (eventToHandle & CLOCK_UPDATE)
-      {
-	if (deviceMode == modeShowTime || deviceMode == modeShowRadio)
-	{
-	  Read_DS1307_DateTime();
-	  updateScreen = 1;
-	}
-      }
-      if (eventToHandle & CLOCK_TICK)
-      {
-	if (deviceMode == modeShowRadio && radioIsOn && Poll_SI4702())
-	{
-	  Renderer_Update_Secondary();
-	}
-      }
-    } 
-
 
     if (updateScreen)
     {
