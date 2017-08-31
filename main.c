@@ -24,17 +24,19 @@ struct DateTime TheDateTime;
 #define EDIT_MODE_ONEBASE 0x04
 
 #define DS1307_RADIOSETTINGS 0
-
+#define DS1307_BRIGHTNESS    2
 
 struct RadioSettings
 {
   uint16_t frequency;
   uint8_t  volume;
+  uint8_t  brightness;
 };
 
 enum clockMode
 {
   modeShowTime,
+  modeShowDate,
   modeShowRadio,
   modeShowRadio_Volume,
   modeAdjustYearTens,
@@ -245,11 +247,15 @@ int main(void)
   PORTC = PORTC | _BV(PORTC2);
   
   InitializePanels(4);
-  SetBrightness(1);
   
   Init_I2C();
   Init_DS1307();
   Init_SI4702();
+  
+  uint8_t brightness;
+  Read_DS1307_RAM(&brightness, DS1307_BRIGHTNESS, 1);
+  brightness = brightness & 0x0f; 
+  SetBrightness(brightness);
   
   // Set port D to input, enable pull-up on portD except for PortD2 (ext0)
 
@@ -269,6 +275,9 @@ int main(void)
   uint8_t *editDigit = 0;
   uint8_t editMode = 0;
   uint8_t editMaxValue = 0x99;
+  uint8_t modeTimeout = 0;
+  
+  _Bool timePollAllowed = 1;
   
   sei(); // Enable interrupts. This will immediately trigger a port change interrupt; sink these events.
   
@@ -298,6 +307,12 @@ int main(void)
       Renderer_Tick(secMode);
     }
     
+    if (eventToHandle & CLOCK_UPDATE && timePollAllowed)
+    {
+      Read_DS1307_DateTime();
+      updateScreen = 1;
+    }
+    
     // Handle keypresses
     switch ( deviceMode )
     {
@@ -320,13 +335,34 @@ int main(void)
 	{
 	  // adjust time
 	  newDeviceMode = modeAdjustYearTens;
-	} else if (longPressEvent.shortPress & BUTTON1_CLICK && radioIsOn)
+	  timePollAllowed = 0;
+	} else if (longPressEvent.shortPress & BUTTON1_CLICK)
 	{
-	  newDeviceMode = modeShowRadio;
-	} else if (eventToHandle & CLOCK_UPDATE)
+	  modeTimeout = 3;
+	  newDeviceMode = modeShowDate;
+	} else if (brightness != 0 && longPressEvent.repPress & BUTTON3_CLICK)
 	{
-	  Read_DS1307_DateTime();
-	  updateScreen = 1;
+	  brightness--;
+	  Write_DS1307_RAM(&brightness, DS1307_BRIGHTNESS, 1);
+	  SetBrightness(brightness);
+	} else if (brightness < 15 && longPressEvent.repPress & BUTTON4_CLICK)
+	{
+	  brightness++;
+	  Write_DS1307_RAM(&brightness, DS1307_BRIGHTNESS, 1);
+	  SetBrightness(brightness);
+	}
+	break;
+      }
+      case modeShowDate:
+      {
+	if ((eventToHandle & CLOCK_UPDATE) && (--modeTimeout == 0) )
+	{
+	  newDeviceMode = modeShowTime;
+	}
+	
+	if (longPressEvent.shortPress & BUTTON1_CLICK)
+	{
+	  newDeviceMode = (radioIsOn? modeShowRadio : modeShowTime);
 	}
 	break;
       }
@@ -339,12 +375,6 @@ int main(void)
 	  RadioOff();
 	  newDeviceMode = modeShowTime;
 	  break;
-	}
-	
-	if (eventToHandle & CLOCK_UPDATE)
-	{
-	  Read_DS1307_DateTime();
-	  updateScreen = 1;
 	}
 	
 	if (eventToHandle & BUTTON1_CLICK)
@@ -380,11 +410,11 @@ int main(void)
 	  newDeviceMode = modeShowRadio_Volume;
 	  if (radioIsOn)
 	  {
-	    if (eventToHandle & BUTTON3_CLICK)
+	    if ((eventToHandle & BUTTON3_CLICK) || (longPressEvent.repPress & BUTTON3_CLICK))
 	    {
 	      SI4702_SetVolume(SI4702_GetVolume() - 1);
 	      Renderer_Update_Secondary();
-	    } else if (eventToHandle & BUTTON4_CLICK)
+	    } else if ((eventToHandle & BUTTON4_CLICK) || (longPressEvent.repPress & BUTTON4_CLICK))
 	    {
 	      SI4702_SetVolume(SI4702_GetVolume() + 1);
 	      Renderer_Update_Secondary();
@@ -417,6 +447,7 @@ int main(void)
 	  {
 	    // Done setting time
 	    Write_DS1307_DateTime();
+	    timePollAllowed = 1;
 	    newDeviceMode = modeShowTime;
 	  }
 	} else if (eventToHandle & BUTTON3_CLICK)
@@ -446,7 +477,7 @@ int main(void)
       switch(newDeviceMode)
       {
         case modeAdjustYearTens:
-          mainMode = MAIN_MODE_DATE;
+	  mainMode = MAIN_MODE_DATE;
           secMode = SECONDARY_MODE_YEAR;
 
           Renderer_SetFlashMask(0x2); 
@@ -475,7 +506,7 @@ int main(void)
           Renderer_SetFlashMask(0x40); 
           break;
         case modeAdjustHoursTens:
-          mainMode = MAIN_MODE_TIME;
+	  mainMode = MAIN_MODE_TIME;
           secMode = SECONDARY_MODE_SEC;
           editMode = EDIT_MODE_TENS;
           editMaxValue = 0x23;
@@ -502,6 +533,12 @@ int main(void)
 	  secMode = SECONDARY_MODE_SEC;
 	  mainMode = MAIN_MODE_TIME;
           break;
+	case modeShowDate:
+	  Renderer_SetFlashMask(0);
+	  editMode = 0;
+	  mainMode = MAIN_MODE_DATE;
+	  secMode = SECONDARY_MODE_YEAR;
+	  break;
 	case modeShowRadio:
 	  mainMode = MAIN_MODE_TIME;
 	  secMode = SECONDARY_MODE_RADIO;
