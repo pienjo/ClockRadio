@@ -312,17 +312,17 @@ void Init_SI4702()
     TWCR &= ~(_BV(TWEN));
   }
 
+  PORTC &= ~(_BV(PORTC3)); // Clear port c3
   DDRC |= _BV(PORTC3); // Port C3 (reset input of SI4702) to output
   
-  PORTC &= ~(_BV(PORTC3)); // Clear port c3
-
   _delay_us(500); 
   // Clear port c4 (SDA)
   PORTC &= ~(_BV(PORTC4));
   
   _delay_us(500);  // Si4702 datasheet: > 100 us
   // assert C3 (SI4702 reset)
-  PORTC |= _BV(PORTC3); 
+  DDRC &= ~_BV(PORTC3); // use external pull-up to 3v3
+  
   _delay_us(10); // Si4702 datasheet: > 30 ns
   // Assert C4
   PORTC |= _BV(PORTC4); 
