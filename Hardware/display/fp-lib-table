@@ -1,0 +1,3 @@
+(fp_lib_table
+  (lib (name my_display)(type KiCad)(uri /home/martijnb/kicad/modules/my_display.pretty)(options "")(descr ""))
+)
