@@ -24,13 +24,24 @@ struct DateTime TheDateTime;
 #define EDIT_MODE_ONEBASE 0x04
 
 #define DS1307_RADIOSETTINGS 0
-#define DS1307_BRIGHTNESS    2
+#define DS1307_BRIGHTNESS    3
+
+#define BEEP_MARK	     3
+#define BEEP_SPACE           4
+#define BEEP_COUNT           4
+#define BEEP_ON_PERIOD       (BEEP_COUNT * (BEEP_MARK + BEEP_SPACE))
+#define BEEP_PAUSE	     BEEP_ON_PERIOD
+#define BEEP_TOTALPERIOD     (BEEP_PAUSE + BEEP_ON_PERIOD)
+
+uint8_t beepState = 0;
+
+_Bool radioIsOn = 0;
+_Bool beepIsOn = 0;
 
 struct RadioSettings
 {
   uint16_t frequency;
   uint8_t  volume;
-  uint8_t  brightness;
 };
 
 enum clockMode
@@ -65,6 +76,34 @@ ISR (TIMER2_OVF_vect)
   // Add new data
   buttonDebounce[timer2_scaler] = PIND;
   
+  // Handle beeping here, so timing is strict
+  if (beepIsOn)
+  {
+    beepState = beepState + 1;
+    
+    if (beepState >= BEEP_TOTALPERIOD)
+      beepState = 0;
+    
+    if (beepState < BEEP_ON_PERIOD)
+    {
+      uint8_t remainder = beepState;
+      while(remainder >= (BEEP_MARK + BEEP_SPACE))
+	remainder -= BEEP_MARK + BEEP_SPACE;
+	
+      if (remainder == 0)
+      {
+	// Turn on beeper
+	TCCR0B = _BV(CS01) | _BV(CS00);
+      }
+      else if (remainder == BEEP_MARK)
+      {
+	// Turn off beeper
+	TCCR0B = 0;
+	PORTC &= ~(_BV(PORTC1));
+      }
+    }
+  }
+  
   uint8_t buttonsToReport = ~((buttonDebounce[0] ^ buttonDebounce[1]) | (buttonDebounce[1] ^ buttonDebounce[2]));
   // Now holds all buttons whose state has been stable over the last 3 scans (all values equal)
 
@@ -92,6 +131,11 @@ ISR (TIMER2_OVF_vect)
   {
     timer2_scaler--;
   }
+}
+
+ISR (TIMER0_COMPA_vect)
+{
+  PINC = _BV(PORTC1); // Toggle output
 }
 
 const uint8_t PROGMEM dpm[] =
@@ -126,8 +170,41 @@ void UpdateDOW()
   TheDateTime.wday = ((year + 5 - year / 4 - pgm_read_byte(dowTable + TheDateTime.month -1) + TheDateTime.day) % 7) + 1;
 }
  
-_Bool radioIsOn = 0;
+void BeepOn()
+{
+  beepIsOn = 1;
+  beepState = BEEP_ON_PERIOD;
   
+  if (radioIsOn)
+  {
+    // Mute radio
+  }
+  else
+  {
+    // Amplifier control is active low
+    PORTC = PORTC & ~( _BV(PORTC2)); 
+  }
+}
+
+void BeepOff()
+{
+  TCCR0B = 0; // Stop timer
+  beepIsOn = 0;
+  
+  // Force beeper output low
+  PORTC &= ~ _BV(PORTC1);
+  
+  if (radioIsOn) // Turn off amplifier if radio is off
+  {
+    // Unmute radio.
+  }
+  else
+  {
+    // Amplifier control is active low
+    PORTC = PORTC | _BV(PORTC2); 
+  }
+}
+
 void RadioOn()
 {
   // Retrieve previous channel and volume
@@ -142,15 +219,23 @@ void RadioOn()
   
   Poll_SI4702();
   // Amplifier control is active low
+  if (beepIsOn)
+  {
+    // Mute ratio
+  }
+  
   PORTC = PORTC & ~( _BV(PORTC2)); 
   radioIsOn = 1;  
 }
 
 void RadioOff()
 {
-  // Amplifier control is active low
-  PORTC = PORTC | _BV(PORTC2);
-  // Store current frequency and volume
+  if (!beepIsOn)
+  {
+    // Amplifier control is active low
+    PORTC = PORTC | _BV(PORTC2);
+    // Store current frequency and volume
+  }  
   
   struct RadioSettings settings;
   settings.frequency = SI4702_GetFrequency();
@@ -241,8 +326,8 @@ void HandleEditDown(const uint8_t editMode, uint8_t *const editDigit, const uint
 
 int main(void)
 {
-  // Enable output on PORT C2 (amplifier control)
-  DDRC |= _BV(PORTC2);
+  // Enable output on PORT C2 (amplifier control) and C1 (beeper)
+  DDRC |= _BV(PORTC2) | _BV(PORTC1);
   // Amplifier control is active low
   PORTC = PORTC | _BV(PORTC2);
   
@@ -267,6 +352,12 @@ int main(void)
   // Setup timer 2: /1024 prescaler, 
   TCCR2B = _BV(CS22) | _BV(CS21) | _BV(CS20); 
 
+  // Setup beeper timer.
+  TCCR0A = _BV(WGM01); // CTC mode.  
+  // Target frequency: 1600 Hz, two interrupts per cycle, or 5000 clock ticks.
+  OCR0A = 78; // To be used with a /64 clock scaler
+  TIMSK0 = _BV(OCIE0A); // Enable output match interrupt
+  
   uint8_t secMode = SECONDARY_MODE_SEC;
   uint8_t mainMode = MAIN_MODE_TIME;
 
@@ -567,7 +658,10 @@ int main(void)
     if (eventToHandle == 0)
     {
       // Nothing to do, go to sleep
-      set_sleep_mode(SLEEP_MODE_PWR_SAVE);
+      if (beepIsOn)
+	set_sleep_mode(SLEEP_MODE_IDLE); // keep timer 0 running!
+      else
+	set_sleep_mode(SLEEP_MODE_PWR_SAVE);
       cli();
       sleep_enable();
       sleep_bod_disable();
