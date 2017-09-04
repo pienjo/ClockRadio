@@ -46,8 +46,8 @@
 #define DIGIT_3 6
 #define DIGIT_4 0 
 
-#define DIGIT_LEFT_LED 4
-#define DIGIT_RIGHT_LED 1
+#define DIGIT_LEFT_LED 1
+#define DIGIT_RIGHT_LED 4
 
 #define SEG_DP 0x10
 #define SEG_a  0x04
