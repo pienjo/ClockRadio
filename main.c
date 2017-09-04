@@ -7,6 +7,7 @@
 #include "longpress.h"
 #include "DS1307.h"
 #include "SI4702.h"
+#include "settings.h"
 
 #include "i2c.h"
 
@@ -23,9 +24,6 @@ struct DateTime TheDateTime;
 #define EDIT_MODE_MASK     0x03
 #define EDIT_MODE_ONEBASE 0x04
 
-#define DS1307_RADIOSETTINGS 0
-#define DS1307_BRIGHTNESS    3
-
 #define BEEP_MARK	     3
 #define BEEP_SPACE           4
 #define BEEP_COUNT           4
@@ -38,18 +36,14 @@ uint8_t beepState = 0;
 _Bool radioIsOn = 0;
 _Bool beepIsOn = 0;
 
-struct RadioSettings
-{
-  uint16_t frequency;
-  uint8_t  volume;
-};
-
 enum clockMode
 {
   modeShowTime,
   modeShowDate,
   modeShowRadio,
   modeShowRadio_Volume,
+  modeShowAlarm1,
+  modeShowAlarm2,
   modeAdjustYearTens,
   modeAdjustYearOnes,
   modeAdjustMonth,
@@ -167,7 +161,9 @@ const uint8_t PROGMEM dowTable[] = { 0,3,2,5,0,3,5,1,4,6,2,4 };
 void UpdateDOW()
 {
   uint8_t year = TheDateTime.year >> 4 | (TheDateTime.year & 0xf); // Undo BCD
-  TheDateTime.wday = ((year + 5 - year / 4 - pgm_read_byte(dowTable + TheDateTime.month -1) + TheDateTime.day) % 7) + 1;
+  year -= ( TheDateTime.month < 3);
+  
+  TheDateTime.wday = ((year + year / 4 /* -y/100 + y / 400 */ + pgm_read_byte(dowTable + TheDateTime.month -1) + TheDateTime.day) % 7) + 1;
 }
  
 void BeepOn()
@@ -207,15 +203,10 @@ void BeepOff()
 
 void RadioOn()
 {
-  // Retrieve previous channel and volume
-  struct RadioSettings settings;
-  
-  Read_DS1307_RAM((uint8_t *)&settings, DS1307_RADIOSETTINGS, sizeof(settings));
-  
   SI4702_PowerOn();
   
-  SI4702_SetFrequency(settings.frequency);
-  SI4702_SetVolume(settings.volume);
+  SI4702_SetFrequency(TheGlobalSettings.radio.frequency);
+  SI4702_SetVolume(TheGlobalSettings.radio.volume);
   
   Poll_SI4702();
   // Amplifier control is active low
@@ -234,14 +225,7 @@ void RadioOff()
   {
     // Amplifier control is active low
     PORTC = PORTC | _BV(PORTC2);
-    // Store current frequency and volume
   }  
-  
-  struct RadioSettings settings;
-  settings.frequency = SI4702_GetFrequency();
-  settings.volume = SI4702_GetVolume();
-  
-  Write_DS1307_RAM((uint8_t *)&settings, DS1307_RADIOSETTINGS, sizeof(settings));
   
   SI4702_PowerOff();
   radioIsOn = 0;
@@ -337,10 +321,26 @@ int main(void)
   Init_DS1307();
   Init_SI4702();
   
-  uint8_t brightness;
-  Read_DS1307_RAM(&brightness, DS1307_BRIGHTNESS, 1);
-  brightness = brightness & 0x0f; 
-  SetBrightness(brightness);
+  // Read radio defaults
+  if (!ReadGlobalSettings())
+  {
+    // settings are lost, initialize
+    TheGlobalSettings.radio.frequency = 875; // start of band
+    TheGlobalSettings.radio.volume = 26;
+    
+    TheGlobalSettings.alarm1.flags = ALARM_TYPE_RADIO | ALARM_DAY_WEEK; // Disabled, Repeat on weekdays, radio
+    TheGlobalSettings.alarm1.hour = 7;
+    TheGlobalSettings.alarm1.min = 0;
+    
+    TheGlobalSettings.alarm2.flags = ALARM_DAY_WEEKEND; // Disabled, repeat on weekend, beeper
+    TheGlobalSettings.alarm2.hour = 9;
+    TheGlobalSettings.alarm2.min = 0x15; 
+    
+    TheGlobalSettings.brightness = 3; // Default brightness.
+    WriteGlobalSettings();
+  }
+
+  SetBrightness(TheGlobalSettings.brightness);
   
   // Set port D to input, enable pull-up on portD except for PortD2 (ext0)
 
@@ -367,7 +367,8 @@ int main(void)
   uint8_t editMode = 0;
   uint8_t editMaxValue = 0x99;
   uint8_t modeTimeout = 0;
-  
+  uint8_t writeSettingTimeout = 0;
+
   _Bool timePollAllowed = 1;
   
   sei(); // Enable interrupts. This will immediately trigger a port change interrupt; sink these events.
@@ -392,16 +393,36 @@ int main(void)
     {
       if (radioIsOn && Poll_SI4702() && deviceMode == modeShowRadio)
       {
+	// Radio is done seeking or tuning
 	Renderer_Update_Secondary();
+	TheGlobalSettings.radio.frequency = SI4702_GetFrequency();
+	writeSettingTimeout = 5;
       }
       
       Renderer_Tick(secMode);
     }
-    
-    if (eventToHandle & CLOCK_UPDATE && timePollAllowed)
+   
+    if (eventToHandle & CLOCK_UPDATE)
     {
-      Read_DS1307_DateTime();
-      updateScreen = 1;
+      if (writeSettingTimeout)
+      {
+	--writeSettingTimeout;
+	if (writeSettingTimeout == 0)
+	{
+	  WriteGlobalSettings();
+	}
+      }
+      
+      if (modeTimeout && --modeTimeout == 0)
+      {
+	 newDeviceMode = modeShowTime;
+      }
+    
+      if (timePollAllowed)
+      {
+	Read_DS1307_DateTime();
+	updateScreen = 1;
+      }
     }
     
     // Handle keypresses
@@ -426,21 +447,19 @@ int main(void)
 	{
 	  // adjust time
 	  newDeviceMode = modeAdjustYearTens;
-	  timePollAllowed = 0;
 	} else if (longPressEvent.shortPress & BUTTON1_CLICK)
 	{
-	  modeTimeout = 3;
 	  newDeviceMode = modeShowDate;
-	} else if (brightness != 0 && longPressEvent.repPress & BUTTON3_CLICK)
+	} else if (TheGlobalSettings.brightness != 0 && longPressEvent.repPress & BUTTON3_CLICK)
 	{
-	  brightness--;
-	  Write_DS1307_RAM(&brightness, DS1307_BRIGHTNESS, 1);
-	  SetBrightness(brightness);
-	} else if (brightness < 15 && longPressEvent.repPress & BUTTON4_CLICK)
+	  TheGlobalSettings.brightness--;
+	  SetBrightness(TheGlobalSettings.brightness);
+	  writeSettingTimeout = 5;
+	} else if (TheGlobalSettings.brightness < 15 && longPressEvent.repPress & BUTTON4_CLICK)
 	{
-	  brightness++;
-	  Write_DS1307_RAM(&brightness, DS1307_BRIGHTNESS, 1);
-	  SetBrightness(brightness);
+	  TheGlobalSettings.brightness++;
+	  SetBrightness(TheGlobalSettings.brightness);
+	  writeSettingTimeout = 5;
 	}
 	break;
       }
@@ -453,7 +472,7 @@ int main(void)
 	
 	if (longPressEvent.shortPress & BUTTON1_CLICK)
 	{
-	  newDeviceMode = (radioIsOn? modeShowRadio : modeShowTime);
+	  newDeviceMode = (radioIsOn? modeShowRadio : modeShowAlarm1);
 	}
 	break;
       }
@@ -471,7 +490,7 @@ int main(void)
 	if (eventToHandle & BUTTON1_CLICK)
 	{
 	  MarkLongPressHandled(BUTTON1_CLICK);
-	  newDeviceMode = modeShowTime;
+	  newDeviceMode = modeShowAlarm1;
 	  break;
 	} 
 	
@@ -481,17 +500,22 @@ int main(void)
 	  newDeviceMode = modeShowRadio;
 	  if (radioIsOn)
 	  {
+
 	    if (eventToHandle & BUTTON3_CLICK)
 	    {
+	      writeSettingTimeout = 0; // Postpone writing settings, the SI4702 prefers the I2C bus t be quiet
 	      SI4702_Tune(0);
 	    } else if (eventToHandle & BUTTON4_CLICK)
 	    {
+	      writeSettingTimeout = 0; // Postpone writing settings, the SI4702 prefers the I2C bus t be quiet
 	      SI4702_Tune(1);
 	    } else if (longPressEvent.longPress & BUTTON3_CLICK)
 	    {
+	      writeSettingTimeout = 0; // Postpone writing settings, the SI4702 prefers the I2C bus t be quiet
 	      SI4702_Seek(0);
 	    } else if (longPressEvent.longPress & BUTTON4_CLICK)
 	    {
+	      writeSettingTimeout = 0; // Postpone writing settings, the SI4702 prefers the I2C bus t be quiet
 	      SI4702_Seek(1);
 	    }
 	  }
@@ -503,17 +527,57 @@ int main(void)
 	  {
 	    if ((eventToHandle & BUTTON3_CLICK) || (longPressEvent.repPress & BUTTON3_CLICK))
 	    {
-	      SI4702_SetVolume(SI4702_GetVolume() - 1);
-	      Renderer_Update_Secondary();
+	      if (TheGlobalSettings.radio.volume > 1)
+	      {
+		TheGlobalSettings.radio.volume--;
+		SI4702_SetVolume(TheGlobalSettings.radio.volume);
+		writeSettingTimeout = 5;
+		Renderer_Update_Secondary();
+	      }
 	    } else if ((eventToHandle & BUTTON4_CLICK) || (longPressEvent.repPress & BUTTON4_CLICK))
 	    {
-	      SI4702_SetVolume(SI4702_GetVolume() + 1);
-	      Renderer_Update_Secondary();
+	      if (TheGlobalSettings.radio.volume < 30)
+	      {
+		TheGlobalSettings.radio.volume++;
+		SI4702_SetVolume(TheGlobalSettings.radio.volume);
+		writeSettingTimeout = 5;
+		Renderer_Update_Secondary();
+	      }
 	    }
 	  }
 	}
 	break;
       }
+      
+      case modeShowAlarm1:
+	if ((eventToHandle & CLOCK_UPDATE) && (--modeTimeout == 0) )
+	{
+	  newDeviceMode = modeShowTime;
+	}
+	
+	if (longPressEvent.longPress & BUTTON1_CLICK)
+	{
+	  // adjust alarm
+	  //newDeviceMode = modeAdjustYearTens;
+	  
+	} else if (longPressEvent.shortPress & BUTTON1_CLICK)
+	{
+	  newDeviceMode = modeShowAlarm2;
+	}
+	break;
+	
+      case modeShowAlarm2:
+	
+	if (longPressEvent.longPress & BUTTON1_CLICK)
+	{
+	  // adjust alarm
+	  //newDeviceMode = modeAdjustYearTens;
+	  
+	} else if (longPressEvent.shortPress & BUTTON1_CLICK)
+	{
+	  newDeviceMode = modeShowTime;
+	}
+	break;
       case modeAdjustYearTens:
       case modeAdjustYearOnes:
       case modeAdjustMonth:
@@ -538,7 +602,6 @@ int main(void)
 	  {
 	    // Done setting time
 	    Write_DS1307_DateTime();
-	    timePollAllowed = 1;
 	    newDeviceMode = modeShowTime;
 	  }
 	} else if (eventToHandle & BUTTON3_CLICK)
@@ -568,35 +631,42 @@ int main(void)
       switch(newDeviceMode)
       {
         case modeAdjustYearTens:
+	  modeTimeout = 255;
 	  mainMode = MAIN_MODE_DATE;
           secMode = SECONDARY_MODE_YEAR;
-
+	  timePollAllowed = 0;
+	  
           Renderer_SetFlashMask(0x2); 
           editDigit = &TheDateTime.year;
           editMode = EDIT_MODE_TENS | EDIT_MODE_ONEBASE;
           editMaxValue = 0x99 | EDIT_MODE_ONEBASE;
           break;
         case modeAdjustYearOnes:
+	  modeTimeout = 255;
           Renderer_SetFlashMask(0x1); 
           editMode = EDIT_MODE_ONES;
           break;
         case modeAdjustMonth:
+	  modeTimeout = 255;
           editMode = EDIT_MODE_NUMBER | EDIT_MODE_ONEBASE; 
           editDigit = &TheDateTime.month;
           editMaxValue = 0x12;
           Renderer_SetFlashMask(0x30); 
           break;
         case modeAdjustDayTens:
+	  modeTimeout = 255;
           editDigit = &TheDateTime.day;
           editMaxValue = GetDaysPerMonth();
           editMode = EDIT_MODE_TENS | EDIT_MODE_ONEBASE;
           Renderer_SetFlashMask(0x80); 
           break;
         case modeAdjustDayOnes:
+	  modeTimeout = 255;
           editMode = EDIT_MODE_ONES | EDIT_MODE_ONEBASE;
           Renderer_SetFlashMask(0x40); 
           break;
         case modeAdjustHoursTens:
+	  modeTimeout = 255;
 	  mainMode = MAIN_MODE_TIME;
           secMode = SECONDARY_MODE_SEC;
           editMode = EDIT_MODE_TENS;
@@ -605,39 +675,68 @@ int main(void)
           Renderer_SetFlashMask(0x80); 
           break;
         case modeAdjustHoursOnes:
+	  modeTimeout = 255;
           Renderer_SetFlashMask(0x40); 
           editMode = EDIT_MODE_ONES;
           break;
         case modeAdjustMinsTens:
+	  modeTimeout = 255;
           editMode = EDIT_MODE_TENS;
           editMaxValue = 0x59;
           editDigit = &TheDateTime.min;
           Renderer_SetFlashMask(0x20); 
           break;
         case modeAdjustMinsOnes:
+	  modeTimeout = 255;
           Renderer_SetFlashMask(0x10); 
           editMode = EDIT_MODE_ONES;
           break;
         case modeShowTime:
+	  modeTimeout = 0;
+	  Renderer_SetLed(LED_OFF, LED_OFF);
 	  Renderer_SetFlashMask(0);
+	  timePollAllowed = 1;
 	  editMode = 0;	  
 	  secMode = SECONDARY_MODE_SEC;
 	  mainMode = MAIN_MODE_TIME;
           break;
 	case modeShowDate:
+	  modeTimeout = 3;
 	  Renderer_SetFlashMask(0);
 	  editMode = 0;
 	  mainMode = MAIN_MODE_DATE;
 	  secMode = SECONDARY_MODE_YEAR;
 	  break;
 	case modeShowRadio:
+	  timePollAllowed = 1;
+	  modeTimeout = 0;
 	  mainMode = MAIN_MODE_TIME;
 	  secMode = SECONDARY_MODE_RADIO;
 	  Renderer_Update_Secondary();
 	  break;
 	case modeShowRadio_Volume:
+	  timePollAllowed = 1;
+	  modeTimeout = 0;
 	  mainMode = MAIN_MODE_TIME;
 	  secMode = SECONDARY_MODE_VOLUME;
+	  Renderer_Update_Secondary();
+	  break;
+	case modeShowAlarm1:
+	  timePollAllowed = 1;
+	  modeTimeout = 10;
+	  mainMode = MAIN_MODE_ALARM1;
+	  secMode = SECONDARY_MODE_ALARM1;
+	  Renderer_SetLed(TheGlobalSettings.alarm1.flags & ALARM_ACTIVE ? LED_BLINK_LONG : LED_BLINK_SHORT, LED_OFF);
+	  
+	  Renderer_Update_Secondary();
+	  break;
+	case modeShowAlarm2:
+	  timePollAllowed = 1;
+	  modeTimeout = 10;
+	  mainMode = MAIN_MODE_ALARM2;
+	  secMode = SECONDARY_MODE_ALARM2;
+	  Renderer_SetLed(LED_OFF, TheGlobalSettings.alarm2.flags & ALARM_ACTIVE ? LED_BLINK_LONG : LED_BLINK_SHORT);
+	  
 	  Renderer_Update_Secondary();
 	  break;
         default:

@@ -14,7 +14,7 @@ CURRENT_DIR = $(shell pwd)
 # For UsbTiny ISP
 AVRDUDE_FLAGS = -c usbtiny
 
-SOURCES= main.c font.c Panels.c Renderer.c DS1307.c 7Segment.c i2c.c SI4702.c longpress.c
+SOURCES= main.c font.c Panels.c Renderer.c DS1307.c 7Segment.c i2c.c SI4702.c longpress.c settings.c
 A_SOURCES = 
 TARGET= PanelClock
 

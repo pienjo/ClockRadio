@@ -3,6 +3,7 @@
 #include "font.h"
 #include "7Segment.h"
 #include "DateTime.h"
+#include "settings.h"
 #include "SI4702.h"
 
 static uint8_t previousHour = 0, previousMinute = 0, animationState = 0, myMainMode = 0, ledState = 0;
@@ -49,13 +50,13 @@ static void __privateRender(const uint8_t secondaryMode)
   uint8_t segmentDigits[8] = { 0 };
   
   const uint8_t leftLedState = ledState & 0x0f;
-  if (leftLedState == 3 || ( leftLedState == 2 && (blinkStatus < BLINK_PERIOD * 3 / 2)) || (leftLedState == 1 && (blinkStatus < BLINK_PERIOD / 2)))
+  if (leftLedState == LED_ON || ( leftLedState == LED_BLINK_LONG && (blinkStatus < BLINK_PERIOD * 3 / 2)) || (leftLedState == LED_BLINK_SHORT && (blinkStatus < BLINK_PERIOD / 2)))
   {
     segmentDigits[DIGIT_LEFT_LED] = SEG_LEFT_LED;
   }
   
   const uint8_t rightLedState = ledState >> 4;
-  if (rightLedState == 3 || ( rightLedState == 2 && (blinkStatus < BLINK_PERIOD * 3 / 2)) || (rightLedState == 1 && (blinkStatus < BLINK_PERIOD / 2)))
+  if (rightLedState == LED_ON || ( rightLedState == LED_BLINK_LONG && (blinkStatus < BLINK_PERIOD * 3 / 2)) || (rightLedState == LED_BLINK_SHORT && (blinkStatus < BLINK_PERIOD / 2)))
   {
     segmentDigits[DIGIT_RIGHT_LED] = SEG_RIGHT_LED;
   }
@@ -72,31 +73,7 @@ static void __privateRender(const uint8_t secondaryMode)
       segmentDigits[DIGIT_3] = pgm_read_byte(BCDToSegment + (TheDateTime.year >> 4));
       segmentDigits[DIGIT_4] = pgm_read_byte(BCDToSegment + (TheDateTime.year & 0xf));
       break;
-    case SECONDARY_MODE_RADIO:
-    {
-      uint16_t freq = SI4702_GetFrequency();
-
-      if (freq == 0)
-      {
-	// Radio disabled
-	segmentDigits[DIGIT_1] = SEG_g;
-	segmentDigits[DIGIT_2] = SEG_g;
-	segmentDigits[DIGIT_3] = SEG_g;
-	segmentDigits[DIGIT_4] = SEG_g;
-      }
-      else
-      {
-	segmentDigits[DIGIT_4] = pgm_read_byte(BCDToSegment + (freq%10));
-	freq /= 10;
-	segmentDigits[DIGIT_3] = pgm_read_byte(BCDToSegment + (freq%10)) | SEG_DP;
-	freq /= 10;
-	segmentDigits[DIGIT_2] = pgm_read_byte(BCDToSegment + (freq%10));
-	freq /= 10;
-	if(freq)
-	  segmentDigits[DIGIT_1] = pgm_read_byte(BCDToSegment + (freq%10));
-      }
-      break;
-    }
+    
     case SECONDARY_MODE_VOLUME:
     {
       uint8_t vol = SI4702_GetVolume();
@@ -106,8 +83,45 @@ static void __privateRender(const uint8_t secondaryMode)
       segmentDigits[DIGIT_1] = SEG_d;
       break;
     }
-  }
+    case SECONDARY_MODE_ALARM1:
+    {
+      if (TheGlobalSettings.alarm1.flags & ALARM_TYPE_RADIO)
+	goto showFrequency; // bite me
+      
+      goto showBeep;
+    }
+    
+    case SECONDARY_MODE_ALARM2:
+    {
+      if (TheGlobalSettings.alarm2.flags & ALARM_TYPE_RADIO)
+	goto showFrequency; // bite me
+showBeep:
+      segmentDigits[DIGIT_1] = SEG_f | SEG_g | SEG_e | SEG_c | SEG_d; // lowercase b
+      segmentDigits[DIGIT_2] = SEG_a | SEG_f | SEG_g | SEG_e | SEG_d; // Uppercase E
+      segmentDigits[DIGIT_3] = SEG_a | SEG_f | SEG_g | SEG_e | SEG_d; // Uppercase E
+      segmentDigits[DIGIT_4] = SEG_a | SEG_f | SEG_b | SEG_g | SEG_e; // lowecase p
+      break;
+    }
+    case SECONDARY_MODE_RADIO:
+    {
+      uint16_t freq;
+showFrequency:
+      freq = TheGlobalSettings.radio.frequency;
 
+      segmentDigits[DIGIT_4] = pgm_read_byte(BCDToSegment + (freq%10));
+      freq /= 10;
+      segmentDigits[DIGIT_3] = pgm_read_byte(BCDToSegment + (freq%10)) | SEG_DP;
+      freq /= 10;
+      segmentDigits[DIGIT_2] = pgm_read_byte(BCDToSegment + (freq%10));
+      freq /= 10;
+      if(freq)
+	segmentDigits[DIGIT_1] = pgm_read_byte(BCDToSegment + (freq%10));
+
+      break;
+    }
+  }
+  
+  
   if (blinkStatus < BLINK_PERIOD)
   {
     if (blinkMask & 0x08)
@@ -124,6 +138,7 @@ static void __privateRender(const uint8_t secondaryMode)
   for (uint8_t i = 0; i < 8; ++i)
   {
     uint8_t dotMask = 0; 
+    uint8_t wday_mask = 0;
     switch(myMainMode)
     {
       case MAIN_MODE_TIME:
@@ -132,6 +147,7 @@ static void __privateRender(const uint8_t secondaryMode)
 	mainDigit[2] = __getDigitMask(previousMinute >> 4, TheDateTime.min >> 4, i);
 	mainDigit[3] = __getDigitMask(previousMinute &0xf, TheDateTime.min & 0xf, i);
 	dotMask =  (i == 1 || i == 5) ? 0x20 : 0;
+	wday_mask =  ( i == TheDateTime.wday - 1) ? 0x3: 0;
 	break;
       case MAIN_MODE_DATE:
 	mainDigit[0] = __getDigitMask(TheDateTime.day >> 4, TheDateTime.day >> 4, i);
@@ -139,6 +155,55 @@ static void __privateRender(const uint8_t secondaryMode)
 	mainDigit[2] = __getDigitMask(TheDateTime.month >> 4, TheDateTime.month >> 4, i);
 	mainDigit[3] = __getDigitMask(TheDateTime.month &0xf, TheDateTime.month & 0xf, i);
 	dotMask = (i < 2 ? 0x40 : (i <5 ? 0x20 : (i < 7 ? 0x10 : 0)));
+	wday_mask =  ( i == TheDateTime.wday - 1) ? 0x3: 0;
+	break;
+      case MAIN_MODE_ALARM1:
+	mainDigit[0] = __getDigitMask(TheGlobalSettings.alarm1.hour >>4, TheGlobalSettings.alarm1.hour >>4, i);
+	mainDigit[1] = __getDigitMask(TheGlobalSettings.alarm1.hour &0xf, TheGlobalSettings.alarm1.hour & 0xf, i);
+	mainDigit[2] = __getDigitMask(TheGlobalSettings.alarm1.min >> 4, TheGlobalSettings.alarm1.min >> 4, i);
+	mainDigit[3] = __getDigitMask(TheGlobalSettings.alarm1.min &0xf, TheGlobalSettings.alarm1.min &0xf, i);
+	dotMask =  (i == 1 || i == 5) ? 0x20 : 0;
+	if (i == 7)
+	  wday_mask = 0;
+	else
+	{
+	  switch (TheGlobalSettings.alarm1.flags & ALARM_DAY_BITS)
+	  {
+	    case ALARM_DAY_DAILY:
+	      wday_mask = 3;
+	      break;
+	    case ALARM_DAY_WEEK:
+	      wday_mask = (i < 5) ? 3 : 0;
+	      break;
+	    case ALARM_DAY_WEEKEND:
+	      wday_mask = (i >= 5 && i ) ? 3 : 0;
+	      break;
+	  }
+	}
+	break;
+      case MAIN_MODE_ALARM2:
+	mainDigit[0] = __getDigitMask(TheGlobalSettings.alarm2.hour >>4, TheGlobalSettings.alarm2.hour >>4, i);
+	mainDigit[1] = __getDigitMask(TheGlobalSettings.alarm2.hour &0xf, TheGlobalSettings.alarm2.hour & 0xf, i);
+	mainDigit[2] = __getDigitMask(TheGlobalSettings.alarm2.min >> 4, TheGlobalSettings.alarm2.min >> 4, i);
+	mainDigit[3] = __getDigitMask(TheGlobalSettings.alarm2.min &0xf, TheGlobalSettings.alarm2.min &0xf, i);
+	dotMask =  (i == 1 || i == 5) ? 0x20 : 0;
+	if (i == 7)
+	  wday_mask = 0;
+	else
+	{
+	  switch (TheGlobalSettings.alarm2.flags & ALARM_DAY_BITS)
+	  {
+	    case ALARM_DAY_DAILY:
+	      wday_mask = 3;
+	      break;
+	    case ALARM_DAY_WEEK:
+	      wday_mask = (i < 5) ? 3 : 0;
+	      break;
+	    case ALARM_DAY_WEEKEND:
+	      wday_mask = (i >= 5) ? 3 : 0;
+	      break;
+	  }
+	}
 	break;
     }
     
@@ -152,7 +217,7 @@ static void __privateRender(const uint8_t secondaryMode)
     }
 
     // day-of-week on 0 and 1, Digit 0 at 3, space at 7
-    data[0] = (mainDigit[0] <<3) | (( i == TheDateTime.wday - 1) ? 0x3: 0 );
+    data[0] = (mainDigit[0] <<3) | wday_mask ;
 
     // Digit 1 at 8-10, space at 11, dot at 12, space at 13, digit 2 at 14-17
 
