@@ -53,6 +53,12 @@ enum clockMode
   modeAdjustHoursOnes,
   modeAdjustMinsTens,
   modeAdjustMinsOnes,
+  modeAdjustHoursTens_Alarm,
+  modeAdjustHoursOnes_Alarm,
+  modeAdjustMinsTens_Alarm,
+  modeAdjustMinsOnes_Alarm,
+  modeAdjustDays_Alarm,
+  modeAdjustType_Alarm,
 } ;
 
 volatile uint16_t event ;
@@ -373,6 +379,8 @@ int main(void)
   
   sei(); // Enable interrupts. This will immediately trigger a port change interrupt; sink these events.
   
+  struct AlarmSetting *alarmBeingModified = 0;
+  
   while (1)
   {
     uint16_t eventToHandle = 0;
@@ -558,7 +566,8 @@ int main(void)
 	if (longPressEvent.longPress & BUTTON1_CLICK)
 	{
 	  // adjust alarm
-	  //newDeviceMode = modeAdjustYearTens;
+	  alarmBeingModified = &TheGlobalSettings.alarm1;
+	  newDeviceMode = modeAdjustHoursTens_Alarm;
 	  
 	} else if (longPressEvent.shortPress & BUTTON1_CLICK)
 	{
@@ -571,7 +580,8 @@ int main(void)
 	if (longPressEvent.longPress & BUTTON1_CLICK)
 	{
 	  // adjust alarm
-	  //newDeviceMode = modeAdjustYearTens;
+	  alarmBeingModified = &TheGlobalSettings.alarm2;
+	  newDeviceMode = modeAdjustHoursTens_Alarm;
 	  
 	} else if (longPressEvent.shortPress & BUTTON1_CLICK)
 	{
@@ -623,7 +633,70 @@ int main(void)
 	}
 	break;
       }
+      case modeAdjustHoursTens_Alarm:
+      case modeAdjustHoursOnes_Alarm:
+      case modeAdjustMinsTens_Alarm:
+      case modeAdjustMinsOnes_Alarm:
+      {
+	if (eventToHandle & BUTTON1_CLICK)
+	{
+	  newDeviceMode++;
+	}
+	else if (eventToHandle & BUTTON3_CLICK)
+	{
+	  updateScreen = 1;
+	  HandleEditDown(editMode, editDigit, editMaxValue);
+	}
+	else if (eventToHandle & BUTTON4_CLICK)
+	{
+	  updateScreen = 1;
+	  HandleEditUp(editMode, editDigit, editMaxValue);
+	}
+	break;	
+      }
+      case modeAdjustDays_Alarm:
+      {
+	if (eventToHandle & BUTTON1_CLICK)
+	{
+	  newDeviceMode++;
+	}
+	else if (eventToHandle & BUTTON3_CLICK)
+	{
+	  updateScreen = 1;
+	  uint8_t newDays = (alarmBeingModified->flags - 4 ) & ALARM_DAY_BITS;
+	  alarmBeingModified->flags &= ~ALARM_DAY_BITS;
+	  alarmBeingModified->flags |= newDays;
+	}
+	else if (eventToHandle & BUTTON4_CLICK)
+	{
+	  updateScreen = 1;
+	  uint8_t newDays = (alarmBeingModified->flags + 4 ) & ALARM_DAY_BITS;
+	  alarmBeingModified->flags &= ~ALARM_DAY_BITS;
+	  alarmBeingModified->flags |= newDays;
+	}
+	break;
+      }
+      case modeAdjustType_Alarm:
+      {
+	if (eventToHandle & BUTTON1_CLICK)
+	{
+	  if (alarmBeingModified == &TheGlobalSettings.alarm1)
+	    newDeviceMode = modeShowAlarm1;
+	  else
+	    newDeviceMode = modeShowAlarm2;
+	    
+	  MarkLongPressHandled(BUTTON1_CLICK);
+	  writeSettingTimeout = 5;
+	}
+	else if (eventToHandle & (BUTTON3_CLICK | BUTTON4_CLICK))
+	{
+	  Renderer_Update_Secondary();
+	  alarmBeingModified->flags ^= ALARM_TYPE_RADIO;
+	}
+	break;
+      }
     }
+    
     
     if (newDeviceMode != deviceMode)
     {
@@ -639,7 +712,7 @@ int main(void)
           Renderer_SetFlashMask(0x2); 
           editDigit = &TheDateTime.year;
           editMode = EDIT_MODE_TENS | EDIT_MODE_ONEBASE;
-          editMaxValue = 0x99 | EDIT_MODE_ONEBASE;
+          editMaxValue = 0x99;
           break;
         case modeAdjustYearOnes:
 	  modeTimeout = 255;
@@ -722,6 +795,7 @@ int main(void)
 	  Renderer_Update_Secondary();
 	  break;
 	case modeShowAlarm1:
+	  Renderer_SetFlashMask(0x00); 
 	  timePollAllowed = 1;
 	  modeTimeout = 10;
 	  mainMode = MAIN_MODE_ALARM1;
@@ -731,6 +805,7 @@ int main(void)
 	  Renderer_Update_Secondary();
 	  break;
 	case modeShowAlarm2:
+	  Renderer_SetFlashMask(0x00); 
 	  timePollAllowed = 1;
 	  modeTimeout = 10;
 	  mainMode = MAIN_MODE_ALARM2;
@@ -739,7 +814,40 @@ int main(void)
 	  
 	  Renderer_Update_Secondary();
 	  break;
+	case modeAdjustHoursTens_Alarm:
+	  modeTimeout = 0;
+	  Renderer_SetFlashMask(0x80); 
+	  editDigit = &alarmBeingModified->hour;
+          editMode = EDIT_MODE_TENS;
+          editMaxValue = 0x23;
+	  break;
+	case modeAdjustHoursOnes_Alarm:
+	  
+	  Renderer_SetFlashMask(0x40); 
+          editMode = EDIT_MODE_ONES;
+	  break;
+	case modeAdjustMinsTens_Alarm:
+	  
+	  Renderer_SetFlashMask(0x20); 
+	  editDigit = &alarmBeingModified->min;
+          editMode = EDIT_MODE_TENS;
+          editMaxValue = 0x59;
+	  break;
+	case modeAdjustMinsOnes_Alarm:
+	  
+	  Renderer_SetFlashMask(0x10); 
+          editMode = EDIT_MODE_ONES;
+	  break;
+	case modeAdjustDays_Alarm:
+	  
+	  Renderer_SetFlashMask(0x00); 
+          editMode = 0;
+	  break;
+	case modeAdjustType_Alarm:
+	  Renderer_SetFlashMask(0x0f);
+	  break;
         default:
+	
           break;
       }
 
