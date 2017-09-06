@@ -379,7 +379,8 @@ int main(void)
   
   sei(); // Enable interrupts. This will immediately trigger a port change interrupt; sink these events.
   
-  struct AlarmSetting *alarmBeingModified = 0;
+  struct AlarmSetting alarmBeingModified;
+  _Bool adjustAlarm1 = false;
   
   while (1)
   {
@@ -508,7 +509,6 @@ int main(void)
 	  newDeviceMode = modeShowRadio;
 	  if (radioIsOn)
 	  {
-
 	    if (eventToHandle & BUTTON3_CLICK)
 	    {
 	      writeSettingTimeout = 0; // Postpone writing settings, the SI4702 prefers the I2C bus t be quiet
@@ -566,7 +566,8 @@ int main(void)
 	if (longPressEvent.longPress & BUTTON1_CLICK)
 	{
 	  // adjust alarm
-	  alarmBeingModified = &TheGlobalSettings.alarm1;
+	  alarmBeingModified = TheGlobalSettings.alarm1;
+	  adjustAlarm1 = 1;
 	  newDeviceMode = modeAdjustHoursTens_Alarm;
 	  
 	} else if (longPressEvent.shortPress & BUTTON1_CLICK)
@@ -580,7 +581,8 @@ int main(void)
 	if (longPressEvent.longPress & BUTTON1_CLICK)
 	{
 	  // adjust alarm
-	  alarmBeingModified = &TheGlobalSettings.alarm2;
+	  alarmBeingModified = TheGlobalSettings.alarm2;
+	  adjustAlarm1 = 0;
 	  newDeviceMode = modeAdjustHoursTens_Alarm;
 	  
 	} else if (longPressEvent.shortPress & BUTTON1_CLICK)
@@ -638,7 +640,11 @@ int main(void)
       case modeAdjustMinsTens_Alarm:
       case modeAdjustMinsOnes_Alarm:
       {
-	if (eventToHandle & BUTTON1_CLICK)
+	if (longPressEvent.longPress & BUTTON1_CLICK)
+	{
+	  // Abort adjusting alarm
+	  newDeviceMode = adjustAlarm1 ? modeShowAlarm1 : modeShowAlarm2;
+	} else if (longPressEvent.shortPress & BUTTON1_CLICK)
 	{
 	  newDeviceMode++;
 	}
@@ -656,34 +662,48 @@ int main(void)
       }
       case modeAdjustDays_Alarm:
       {
-	if (eventToHandle & BUTTON1_CLICK)
+	if (longPressEvent.longPress & BUTTON1_CLICK)
+	{
+	  // Abort adjusting alarm
+	  newDeviceMode = adjustAlarm1 ? modeShowAlarm1 : modeShowAlarm2;
+	} else if (longPressEvent.shortPress & BUTTON1_CLICK)
 	{
 	  newDeviceMode++;
 	}
 	else if (eventToHandle & BUTTON3_CLICK)
 	{
 	  updateScreen = 1;
-	  uint8_t newDays = (alarmBeingModified->flags - 4 ) & ALARM_DAY_BITS;
-	  alarmBeingModified->flags &= ~ALARM_DAY_BITS;
-	  alarmBeingModified->flags |= newDays;
+	  uint8_t newDays = (alarmBeingModified.flags - 4 ) & ALARM_DAY_BITS;
+	  alarmBeingModified.flags &= ~ALARM_DAY_BITS;
+	  alarmBeingModified.flags |= newDays;
 	}
 	else if (eventToHandle & BUTTON4_CLICK)
 	{
 	  updateScreen = 1;
-	  uint8_t newDays = (alarmBeingModified->flags + 4 ) & ALARM_DAY_BITS;
-	  alarmBeingModified->flags &= ~ALARM_DAY_BITS;
-	  alarmBeingModified->flags |= newDays;
+	  uint8_t newDays = (alarmBeingModified.flags + 4 ) & ALARM_DAY_BITS;
+	  alarmBeingModified.flags &= ~ALARM_DAY_BITS;
+	  alarmBeingModified.flags |= newDays;
 	}
 	break;
       }
       case modeAdjustType_Alarm:
       {
-	if (eventToHandle & BUTTON1_CLICK)
+	if (longPressEvent.longPress & BUTTON1_CLICK)
 	{
-	  if (alarmBeingModified == &TheGlobalSettings.alarm1)
+	  // Abort adjusting alarm
+	  newDeviceMode = adjustAlarm1 ? modeShowAlarm1 : modeShowAlarm2;
+	} else if (longPressEvent.shortPress & BUTTON1_CLICK)
+	{
+	  if (adjustAlarm1)
+	  {
+	    TheGlobalSettings.alarm2 = alarmBeingModified;
 	    newDeviceMode = modeShowAlarm1;
+	  }
 	  else
+	  {
+	    TheGlobalSettings.alarm2 = alarmBeingModified;
 	    newDeviceMode = modeShowAlarm2;
+	  }
 	    
 	  MarkLongPressHandled(BUTTON1_CLICK);
 	  writeSettingTimeout = 5;
@@ -691,7 +711,7 @@ int main(void)
 	else if (eventToHandle & (BUTTON3_CLICK | BUTTON4_CLICK))
 	{
 	  Renderer_Update_Secondary();
-	  alarmBeingModified->flags ^= ALARM_TYPE_RADIO;
+	  alarmBeingModified.flags ^= ALARM_TYPE_RADIO;
 	}
 	break;
       }
@@ -815,35 +835,36 @@ int main(void)
 	  Renderer_Update_Secondary();
 	  break;
 	case modeAdjustHoursTens_Alarm:
-	  modeTimeout = 0;
+	  modeTimeout = 255;
 	  Renderer_SetFlashMask(0x80); 
-	  editDigit = &alarmBeingModified->hour;
+	  editDigit = &alarmBeingModified.hour;
           editMode = EDIT_MODE_TENS;
           editMaxValue = 0x23;
 	  break;
 	case modeAdjustHoursOnes_Alarm:
-	  
+	  modeTimeout = 255;
 	  Renderer_SetFlashMask(0x40); 
           editMode = EDIT_MODE_ONES;
 	  break;
 	case modeAdjustMinsTens_Alarm:
-	  
+	  modeTimeout = 255;
 	  Renderer_SetFlashMask(0x20); 
-	  editDigit = &alarmBeingModified->min;
+	  editDigit = &alarmBeingModified.min;
           editMode = EDIT_MODE_TENS;
           editMaxValue = 0x59;
 	  break;
 	case modeAdjustMinsOnes_Alarm:
-	  
+	  modeTimeout = 255;
 	  Renderer_SetFlashMask(0x10); 
           editMode = EDIT_MODE_ONES;
 	  break;
 	case modeAdjustDays_Alarm:
-	  
-	  Renderer_SetFlashMask(0x00); 
+	  modeTimeout = 255;
+	  Renderer_SetFlashMask(0x100); 
           editMode = 0;
 	  break;
 	case modeAdjustType_Alarm:
+	  modeTimeout = 255;
 	  Renderer_SetFlashMask(0x0f);
 	  break;
         default:

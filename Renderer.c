@@ -8,7 +8,7 @@
 
 static uint8_t previousHour = 0, previousMinute = 0, animationState = 0, myMainMode = 0, ledState = 0;
 
-static uint8_t blinkMask = 0x0;
+static uint16_t blinkMask = 0x0;
 
 static uint8_t blinkStatus = 0;
 
@@ -209,13 +209,17 @@ showFrequency:
     
     if (blinkStatus < BLINK_PERIOD)
     {
+      uint8_t digitMask = blinkMask & 0xff;
       for (uint8_t i = 0, mask = 0x80; i < 4; ++i, mask >>= 1)
       {
-	if (blinkMask & mask)
+	if (digitMask & mask)
 	  mainDigit[i] = 0;
       }
+      
+      if (blinkMask & 0x100)
+	wday_mask = 0;
     }
-
+    
     // day-of-week on 0 and 1, Digit 0 at 3, space at 7
     data[0] = (mainDigit[0] <<3) | wday_mask ;
 
@@ -297,7 +301,7 @@ void Renderer_Update_Main(const uint8_t mainMode,const _Bool animate)
   }
 }
 
-void Renderer_SetFlashMask(const uint8_t mask)
+void Renderer_SetFlashMask(const uint16_t mask)
 {
   blinkMask = mask; 
   blinkStatus = BLINK_PERIOD - 2;

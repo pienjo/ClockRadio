@@ -39,7 +39,7 @@ void Renderer_SetLed(const uint8_t leftLedState, const uint8_t rightLedState);
 
 void Renderer_Update_Secondary();
 
-// Set which digits should be flashing. bit 7 = leftmost digit, bit 0 = rightmost digit
-void Renderer_SetFlashMask(const uint8_t mask);
+// Set which digits should be flashing. bit 7 = leftmost digit, bit 0 = rightmost digit. bit 8 = day indicator
+void Renderer_SetFlashMask(const uint16_t mask);
 #endif
 
