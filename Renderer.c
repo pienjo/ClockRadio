@@ -12,7 +12,14 @@ static uint16_t blinkMask = 0x0;
 
 static uint8_t blinkStatus = 0;
 
+static const struct AlarmSetting *alarm = 0;
+
 #define BLINK_PERIOD 10
+
+void Renderer_SetAlarmStruct( const struct AlarmSetting *pAlarm )
+{
+  alarm = pAlarm;
+}
 
 static uint8_t __getDigitMask(uint8_t prevDigit, uint8_t currentDigit, int8_t row)
 {
@@ -83,29 +90,21 @@ static void __privateRender(const uint8_t secondaryMode)
       segmentDigits[DIGIT_1] = SEG_d;
       break;
     }
-    case SECONDARY_MODE_ALARM1:
+    case SECONDARY_MODE_ALARM:
     {
-      if (TheGlobalSettings.alarm1.flags & ALARM_TYPE_RADIO)
-	goto showFrequency; // bite me
-      
-      goto showBeep;
-    }
-    
-    case SECONDARY_MODE_ALARM2:
-    {
-      if (TheGlobalSettings.alarm2.flags & ALARM_TYPE_RADIO)
-	goto showFrequency; // bite me
-showBeep:
-      segmentDigits[DIGIT_1] = SEG_f | SEG_g | SEG_e | SEG_c | SEG_d; // lowercase b
-      segmentDigits[DIGIT_2] = SEG_a | SEG_f | SEG_g | SEG_e | SEG_d; // Uppercase E
-      segmentDigits[DIGIT_3] = SEG_a | SEG_f | SEG_g | SEG_e | SEG_d; // Uppercase E
-      segmentDigits[DIGIT_4] = SEG_a | SEG_f | SEG_b | SEG_g | SEG_e; // lowecase p
-      break;
+      if (!alarm || !(alarm->flags & ALARM_TYPE_RADIO))
+      {
+	segmentDigits[DIGIT_1] = SEG_f | SEG_g | SEG_e | SEG_c | SEG_d; // lowercase b
+	segmentDigits[DIGIT_2] = SEG_a | SEG_f | SEG_g | SEG_e | SEG_d; // Uppercase E
+	segmentDigits[DIGIT_3] = SEG_a | SEG_f | SEG_g | SEG_e | SEG_d; // Uppercase E
+	segmentDigits[DIGIT_4] = SEG_a | SEG_f | SEG_b | SEG_g | SEG_e; // lowecase p
+	break;
+      }
+      // fall-through
     }
     case SECONDARY_MODE_RADIO:
     {
       uint16_t freq;
-showFrequency:
       freq = TheGlobalSettings.radio.frequency;
 
       segmentDigits[DIGIT_4] = pgm_read_byte(BCDToSegment + (freq%10));
@@ -157,51 +156,30 @@ showFrequency:
 	dotMask = (i < 2 ? 0x40 : (i <5 ? 0x20 : (i < 7 ? 0x10 : 0)));
 	wday_mask =  ( i == TheDateTime.wday - 1) ? 0x3: 0;
 	break;
-      case MAIN_MODE_ALARM1:
-	mainDigit[0] = __getDigitMask(TheGlobalSettings.alarm1.hour >>4, TheGlobalSettings.alarm1.hour >>4, i);
-	mainDigit[1] = __getDigitMask(TheGlobalSettings.alarm1.hour &0xf, TheGlobalSettings.alarm1.hour & 0xf, i);
-	mainDigit[2] = __getDigitMask(TheGlobalSettings.alarm1.min >> 4, TheGlobalSettings.alarm1.min >> 4, i);
-	mainDigit[3] = __getDigitMask(TheGlobalSettings.alarm1.min &0xf, TheGlobalSettings.alarm1.min &0xf, i);
-	dotMask =  (i == 1 || i == 5) ? 0x20 : 0;
-	if (i == 7)
-	  wday_mask = 0;
-	else
+      case MAIN_MODE_ALARM:
+	if (alarm)
 	{
-	  switch (TheGlobalSettings.alarm1.flags & ALARM_DAY_BITS)
+	  mainDigit[0] = __getDigitMask(alarm->hour >>4, alarm->hour >>4, i);
+	  mainDigit[1] = __getDigitMask(alarm->hour &0xf, alarm->hour & 0xf, i);
+	  mainDigit[2] = __getDigitMask(alarm->min >> 4, alarm->min >> 4, i);
+	  mainDigit[3] = __getDigitMask(alarm->min &0xf, alarm->min &0xf, i);
+	  dotMask =  (i == 1 || i == 5) ? 0x20 : 0;
+	  if (i == 7)
+	    wday_mask = 0;
+	  else
 	  {
-	    case ALARM_DAY_DAILY:
-	      wday_mask = 3;
-	      break;
-	    case ALARM_DAY_WEEK:
-	      wday_mask = (i < 5) ? 3 : 0;
-	      break;
-	    case ALARM_DAY_WEEKEND:
-	      wday_mask = (i >= 5 && i ) ? 3 : 0;
-	      break;
-	  }
-	}
-	break;
-      case MAIN_MODE_ALARM2:
-	mainDigit[0] = __getDigitMask(TheGlobalSettings.alarm2.hour >>4, TheGlobalSettings.alarm2.hour >>4, i);
-	mainDigit[1] = __getDigitMask(TheGlobalSettings.alarm2.hour &0xf, TheGlobalSettings.alarm2.hour & 0xf, i);
-	mainDigit[2] = __getDigitMask(TheGlobalSettings.alarm2.min >> 4, TheGlobalSettings.alarm2.min >> 4, i);
-	mainDigit[3] = __getDigitMask(TheGlobalSettings.alarm2.min &0xf, TheGlobalSettings.alarm2.min &0xf, i);
-	dotMask =  (i == 1 || i == 5) ? 0x20 : 0;
-	if (i == 7)
-	  wday_mask = 0;
-	else
-	{
-	  switch (TheGlobalSettings.alarm2.flags & ALARM_DAY_BITS)
-	  {
-	    case ALARM_DAY_DAILY:
-	      wday_mask = 3;
-	      break;
-	    case ALARM_DAY_WEEK:
-	      wday_mask = (i < 5) ? 3 : 0;
-	      break;
-	    case ALARM_DAY_WEEKEND:
-	      wday_mask = (i >= 5) ? 3 : 0;
-	      break;
+	    switch (alarm->flags & ALARM_DAY_BITS)
+	    {
+	      case ALARM_DAY_DAILY:
+		wday_mask = 3;
+		break;
+	      case ALARM_DAY_WEEK:
+		wday_mask = (i < 5) ? 3 : 0;
+		break;
+	      case ALARM_DAY_WEEKEND:
+		wday_mask = (i >= 5 && i ) ? 3 : 0;
+		break;
+	    }
 	  }
 	}
 	break;
@@ -250,7 +228,9 @@ void Renderer_Tick(uint8_t secondaryMode)
   
   _Bool doRender = 0;
   
-  if (animationState & 0x80 || (blinkMask && (blinkStatus == 0 || blinkStatus == BLINK_PERIOD)) || ledState != 0)
+  uint8_t ledBlinking = ledState & 0x22; // Blink on 10 and 11, not on 00 and 01
+  
+  if (animationState & 0x80 || (blinkMask && (blinkStatus == 0 || blinkStatus == BLINK_PERIOD)) || ledBlinking != 0)
   {
     animationState &= 0x7f;
     doRender = 1;

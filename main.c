@@ -171,7 +171,41 @@ void UpdateDOW()
   
   TheDateTime.wday = ((year + year / 4 /* -y/100 + y / 400 */ + pgm_read_byte(dowTable + TheDateTime.month -1) + TheDateTime.day) % 7) + 1;
 }
- 
+
+_Bool IsAlarmScheduled(struct AlarmSetting *alarm)
+{
+  if (!alarm->flags & ALARM_ACTIVE)
+    return 0;
+  
+  uint8_t dayBits = 0xff; // bit 0 = monday, bit 1 = tuesday ... bit 7 is monday again, to handle wraparound.
+  
+  switch (alarm->flags & ALARM_DAY_BITS)
+  {
+    case ALARM_DAY_WEEK:
+      dayBits = 0x9f; // Trigger on mon-fri
+      break;
+    case ALARM_DAY_WEEKEND:
+      dayBits = 0x60; // Trigger on sat-sun
+  }
+  
+  // See if next alarm time is today or tomorrow.
+  uint8_t nextAlarmDay; // 0-based
+  
+  if (TheDateTime.hour < alarm->hour || (TheDateTime.hour == alarm->hour && TheDateTime.min <= alarm->min))
+  {
+    // Alarm will trigger today
+    nextAlarmDay = TheDateTime.day - 1; // 0-6
+  }
+  else
+  {
+    // Alarm will trigger tomorrow.
+    nextAlarmDay = TheDateTime.day;
+  }
+    
+  // Check if day matches
+  return dayBits & (1 << nextAlarmDay);
+}
+
 void BeepOn()
 {
   beepIsOn = 1;
@@ -246,8 +280,14 @@ void HandleEditUp(const uint8_t editMode, uint8_t *const editDigit, const uint8_
       uint8_t v = *editDigit;
       v = v&0x0f;
       if (v < 9)
+      {
 	v++;
-      *editDigit = (*editDigit & 0xf0) | v;
+	*editDigit = (*editDigit & 0xf0) | v;
+      }
+      else
+      {
+	*editDigit += 7;
+      }
       break;
     }
     case EDIT_MODE_TENS:
@@ -283,8 +323,15 @@ void HandleEditDown(const uint8_t editMode, uint8_t *const editDigit, const uint
       uint8_t v = *editDigit;
       v = v&0x0f;
       if (v > 0)
+      {
 	v--;
-      *editDigit = (*editDigit & 0xf0) | v;
+	*editDigit = (*editDigit & 0xf0) | v;
+      }
+      else
+      {
+	if (*editDigit > 0)
+	  *editDigit-= 7; 
+      }
       break;
     }
     case EDIT_MODE_TENS:
@@ -431,6 +478,8 @@ int main(void)
       {
 	Read_DS1307_DateTime();
 	updateScreen = 1;
+	if (deviceMode < modeShowAlarm1)
+	  Renderer_SetLed(IsAlarmScheduled(&TheGlobalSettings.alarm1) ? LED_ON : LED_OFF, IsAlarmScheduled( &TheGlobalSettings.alarm2) ? LED_ON : LED_OFF);
       }
     }
     
@@ -696,7 +745,7 @@ int main(void)
 	{
 	  if (adjustAlarm1)
 	  {
-	    TheGlobalSettings.alarm2 = alarmBeingModified;
+	    TheGlobalSettings.alarm1 = alarmBeingModified;
 	    newDeviceMode = modeShowAlarm1;
 	  }
 	  else
@@ -786,7 +835,6 @@ int main(void)
           break;
         case modeShowTime:
 	  modeTimeout = 0;
-	  Renderer_SetLed(LED_OFF, LED_OFF);
 	  Renderer_SetFlashMask(0);
 	  timePollAllowed = 1;
 	  editMode = 0;	  
@@ -815,28 +863,32 @@ int main(void)
 	  Renderer_Update_Secondary();
 	  break;
 	case modeShowAlarm1:
+	{
 	  Renderer_SetFlashMask(0x00); 
 	  timePollAllowed = 1;
 	  modeTimeout = 10;
-	  mainMode = MAIN_MODE_ALARM1;
-	  secMode = SECONDARY_MODE_ALARM1;
-	  Renderer_SetLed(TheGlobalSettings.alarm1.flags & ALARM_ACTIVE ? LED_BLINK_LONG : LED_BLINK_SHORT, LED_OFF);
-	  
+	  mainMode = MAIN_MODE_ALARM;
+	  secMode = SECONDARY_MODE_ALARM;
+	  Renderer_SetAlarmStruct(&TheGlobalSettings.alarm1);
+	  Renderer_SetLed(TheGlobalSettings.alarm1.flags & ALARM_ACTIVE ? LED_BLINK_LONG : LED_BLINK_SHORT, IsAlarmScheduled( &TheGlobalSettings.alarm2) ? LED_ON : LED_OFF);
 	  Renderer_Update_Secondary();
 	  break;
+	}
 	case modeShowAlarm2:
 	  Renderer_SetFlashMask(0x00); 
 	  timePollAllowed = 1;
 	  modeTimeout = 10;
-	  mainMode = MAIN_MODE_ALARM2;
-	  secMode = SECONDARY_MODE_ALARM2;
-	  Renderer_SetLed(LED_OFF, TheGlobalSettings.alarm2.flags & ALARM_ACTIVE ? LED_BLINK_LONG : LED_BLINK_SHORT);
+	  mainMode = MAIN_MODE_ALARM;
+	  secMode = SECONDARY_MODE_ALARM;
+	  Renderer_SetAlarmStruct(&TheGlobalSettings.alarm2);
+	  Renderer_SetLed(IsAlarmScheduled( &TheGlobalSettings.alarm1) ? LED_ON : LED_OFF, TheGlobalSettings.alarm2.flags & ALARM_ACTIVE ? LED_BLINK_LONG : LED_BLINK_SHORT);
 	  
 	  Renderer_Update_Secondary();
 	  break;
 	case modeAdjustHoursTens_Alarm:
 	  modeTimeout = 255;
 	  Renderer_SetFlashMask(0x80); 
+	  Renderer_SetAlarmStruct(&alarmBeingModified);
 	  editDigit = &alarmBeingModified.hour;
           editMode = EDIT_MODE_TENS;
           editMaxValue = 0x23;
