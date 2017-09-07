@@ -636,7 +636,12 @@ int main(void)
 	  
 	} else if (longPressEvent.shortPress & BUTTON1_CLICK)
 	{
-	  newDeviceMode = modeShowTime;
+	  if (radioIsOn)
+	  {
+	    newDeviceMode = modeShowRadio;
+	  }
+	  else
+	    newDeviceMode = modeShowTime;
 	}
 	break;
       case modeAdjustYearTens:
