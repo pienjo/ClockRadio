@@ -31,6 +31,8 @@ struct DateTime TheDateTime;
 #define BEEP_PAUSE	     BEEP_ON_PERIOD
 #define BEEP_TOTALPERIOD     (BEEP_PAUSE + BEEP_ON_PERIOD)
 
+#define SHOW_ALARM_TIMEOUT   15
+
 uint8_t beepState = 0;
 
 _Bool radioIsOn = 0;
@@ -174,7 +176,7 @@ void UpdateDOW()
 
 _Bool IsAlarmScheduled(struct AlarmSetting *alarm)
 {
-  if (!alarm->flags & ALARM_ACTIVE)
+  if ((alarm->flags & ALARM_ACTIVE) == 0)
     return 0;
   
   uint8_t dayBits = 0xff; // bit 0 = monday, bit 1 = tuesday ... bit 7 is monday again, to handle wraparound.
@@ -194,12 +196,12 @@ _Bool IsAlarmScheduled(struct AlarmSetting *alarm)
   if (TheDateTime.hour < alarm->hour || (TheDateTime.hour == alarm->hour && TheDateTime.min <= alarm->min))
   {
     // Alarm will trigger today
-    nextAlarmDay = TheDateTime.day - 1; // 0-6
+    nextAlarmDay = TheDateTime.wday - 1; // 0-6
   }
   else
   {
     // Alarm will trigger tomorrow.
-    nextAlarmDay = TheDateTime.day;
+    nextAlarmDay = TheDateTime.wday;
   }
     
   // Check if day matches
@@ -445,19 +447,6 @@ int main(void)
     
     enum clockMode newDeviceMode = deviceMode;
 
-    if (eventToHandle & CLOCK_TICK)
-    {
-      if (radioIsOn && Poll_SI4702() && deviceMode == modeShowRadio)
-      {
-	// Radio is done seeking or tuning
-	Renderer_Update_Secondary();
-	TheGlobalSettings.radio.frequency = SI4702_GetFrequency();
-	writeSettingTimeout = 5;
-      }
-      
-      Renderer_Tick(secMode);
-    }
-   
     if (eventToHandle & CLOCK_UPDATE)
     {
       if (writeSettingTimeout)
@@ -607,9 +596,19 @@ int main(void)
       }
       
       case modeShowAlarm1:
+	if ( eventToHandle & BUTTON2_CLICK )
+	{
+	  modeTimeout = SHOW_ALARM_TIMEOUT;
+	  TheGlobalSettings.alarm1.flags ^= ALARM_ACTIVE;
+	  Renderer_SetLed(TheGlobalSettings.alarm1.flags & ALARM_ACTIVE ? LED_BLINK_LONG : LED_BLINK_SHORT, IsAlarmScheduled( &TheGlobalSettings.alarm2) ? LED_ON : LED_OFF);	
+	}
+	
 	if ((eventToHandle & CLOCK_UPDATE) && (--modeTimeout == 0) )
 	{
-	  newDeviceMode = modeShowTime;
+	  if (radioIsOn)
+	    newDeviceMode = modeShowRadio;
+	  else
+	    newDeviceMode = modeShowTime;
 	}
 	
 	if (longPressEvent.longPress & BUTTON1_CLICK)
@@ -626,6 +625,20 @@ int main(void)
 	break;
 	
       case modeShowAlarm2:
+	if ( eventToHandle & BUTTON2_CLICK )
+	{
+	  modeTimeout = SHOW_ALARM_TIMEOUT;
+	  TheGlobalSettings.alarm2.flags ^= ALARM_ACTIVE;
+	  Renderer_SetLed(IsAlarmScheduled( &TheGlobalSettings.alarm1) ? LED_ON : LED_OFF, TheGlobalSettings.alarm2.flags & ALARM_ACTIVE ? LED_BLINK_LONG : LED_BLINK_SHORT);
+	}
+	
+	if ((eventToHandle & CLOCK_UPDATE) && (--modeTimeout == 0) )
+	{
+	  if (radioIsOn)
+	    newDeviceMode = modeShowRadio;
+	  else
+	    newDeviceMode = modeShowTime;
+	}
 	
 	if (longPressEvent.longPress & BUTTON1_CLICK)
 	{
@@ -871,7 +884,7 @@ int main(void)
 	{
 	  Renderer_SetFlashMask(0x00); 
 	  timePollAllowed = 1;
-	  modeTimeout = 10;
+	  modeTimeout = SHOW_ALARM_TIMEOUT;
 	  mainMode = MAIN_MODE_ALARM;
 	  secMode = SECONDARY_MODE_ALARM;
 	  Renderer_SetAlarmStruct(&TheGlobalSettings.alarm1);
@@ -882,7 +895,7 @@ int main(void)
 	case modeShowAlarm2:
 	  Renderer_SetFlashMask(0x00); 
 	  timePollAllowed = 1;
-	  modeTimeout = 10;
+	  modeTimeout = SHOW_ALARM_TIMEOUT;
 	  mainMode = MAIN_MODE_ALARM;
 	  secMode = SECONDARY_MODE_ALARM;
 	  Renderer_SetAlarmStruct(&TheGlobalSettings.alarm2);
@@ -940,6 +953,19 @@ int main(void)
       Renderer_Update_Main(mainMode, (eventToHandle & CLOCK_UPDATE) && (deviceMode == modeShowTime || deviceMode == modeShowRadio) );
     }
 
+    if (eventToHandle & CLOCK_TICK)
+    {
+      if (radioIsOn && Poll_SI4702() && deviceMode == modeShowRadio)
+      {
+	// Radio is done seeking or tuning
+	Renderer_Update_Secondary();
+	TheGlobalSettings.radio.frequency = SI4702_GetFrequency();
+	writeSettingTimeout = 5;
+      }
+      
+      Renderer_Tick(secMode);
+    }
+   
     if (eventToHandle == 0)
     {
       // Nothing to do, go to sleep
