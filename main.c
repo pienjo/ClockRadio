@@ -17,6 +17,7 @@
 #include <avr/pgmspace.h>
 
 struct DateTime TheDateTime;
+struct DateTime ThePreviousDateTime;
 
 #define EDIT_MODE_ONES     0x1
 #define EDIT_MODE_TENS     0x2
@@ -33,6 +34,9 @@ struct DateTime TheDateTime;
 
 #define SHOW_ALARM_TIMEOUT   15
 
+#define ALARM_BEEP_TIMEOUT   4
+#define ALARM_RADIO_TIMEOUT  60
+
 uint8_t beepState = 0;
 
 _Bool radioIsOn = 0;
@@ -46,6 +50,7 @@ enum clockMode
   modeShowRadio_Volume,
   modeShowAlarm1,
   modeShowAlarm2,
+  modeAlarmFiring,
   modeAdjustYearTens,
   modeAdjustYearOnes,
   modeAdjustMonth,
@@ -363,6 +368,47 @@ void HandleEditDown(const uint8_t editMode, uint8_t *const editDigit, const uint
     *editDigit = 1;
 } 
 
+uint8_t alarm1Timeout = 0; // minutes
+uint8_t alarm2Timeout = 0; // minutes
+_Bool alarm1Scheduled = 0, alarm2Scheduled = 0;
+
+void SilenceAlarm(struct AlarmSetting *alarm)
+{
+  if (alarm->flags & ALARM_TYPE_RADIO)
+  {
+    RadioOff();
+  }
+  else
+  {
+    BeepOff();
+  }
+}
+  
+_Bool AlarmTriggered(struct AlarmSetting *alarm)
+{
+  uint16_t alarmMinOfDay = alarm->hour * 60 + alarm->min;
+  
+  uint16_t prevMinOfDay = ThePreviousDateTime.hour * 60 + ThePreviousDateTime.min;
+  
+  if (prevMinOfDay >= alarmMinOfDay)
+    return 0; // already triggered
+    
+  uint16_t curMinOfDay = TheDateTime.hour * 60 + TheDateTime.min;
+  
+  if (curMinOfDay < prevMinOfDay)
+    curMinOfDay += 60*24;
+    
+  if (curMinOfDay < alarmMinOfDay)
+    return 0; // not yet triggered
+  
+  if ((alarm->flags & ALARM_DAY_NEVER) == ALARM_DAY_NEVER)
+  {
+    // Turn off alarm on one-time alarms
+    alarm->flags &= ~ALARM_ACTIVE;
+  }
+  
+  return 1;
+}
 int main(void)
 {
   // Enable output on PORT C2 (amplifier control) and C1 (beeper)
@@ -421,9 +467,9 @@ int main(void)
   uint8_t *editDigit = 0;
   uint8_t editMode = 0;
   uint8_t editMaxValue = 0x99;
-  uint8_t modeTimeout = 0;
-  uint8_t writeSettingTimeout = 0;
-
+  uint8_t modeTimeout = 0; // seconds
+  uint8_t writeSettingTimeout = 0; // seconds
+  
   _Bool timePollAllowed = 1;
   
   sei(); // Enable interrupts. This will immediately trigger a port change interrupt; sink these events.
@@ -467,8 +513,68 @@ int main(void)
       {
 	Read_DS1307_DateTime();
 	updateScreen = 1;
+	
+	// See if alarms must timeout
+	if (ThePreviousDateTime.sec > TheDateTime.sec)
+	{
+	  // Second rollover.
+	  if (alarm1Timeout)
+	  {
+	    alarm1Timeout--;
+	    if (!alarm1Timeout)
+	      SilenceAlarm(&TheGlobalSettings.alarm1);
+	  }
+	  
+	  if (alarm2Timeout)
+	  {
+	    alarm2Timeout--;
+	    if (!alarm2Timeout)
+	      SilenceAlarm(&TheGlobalSettings.alarm2);
+	  }
+	}
+	
+	// See if alarms must fire.
+	if (alarm1Scheduled && AlarmTriggered(&TheGlobalSettings.alarm1))
+	{
+	  if (TheGlobalSettings.alarm1.flags & ALARM_TYPE_RADIO)
+	  {
+	    RadioOn();
+	    alarm1Timeout = ALARM_RADIO_TIMEOUT;
+	  }
+	  else
+	  {
+	    BeepOn();
+	    alarm1Timeout = ALARM_BEEP_TIMEOUT;
+	  }
+	  
+	  newDeviceMode = modeAlarmFiring;
+	}
+	
+	if ( alarm2Scheduled && AlarmTriggered(&TheGlobalSettings.alarm2))
+	{
+	  if (TheGlobalSettings.alarm2.flags & ALARM_TYPE_RADIO)
+	  {
+	    RadioOn();
+	    alarm2Timeout = ALARM_RADIO_TIMEOUT;
+	  }
+	  else
+	  {
+	    BeepOn();
+	    alarm2Timeout = ALARM_BEEP_TIMEOUT;
+	  }
+	  
+	  newDeviceMode = modeAlarmFiring;
+	}
+	
+	ThePreviousDateTime = TheDateTime;
+	
 	if (deviceMode < modeShowAlarm1)
-	  Renderer_SetLed(IsAlarmScheduled(&TheGlobalSettings.alarm1) ? LED_ON : LED_OFF, IsAlarmScheduled( &TheGlobalSettings.alarm2) ? LED_ON : LED_OFF);
+	{
+	  alarm1Scheduled = IsAlarmScheduled(&TheGlobalSettings.alarm1);
+	  alarm2Scheduled = IsAlarmScheduled(&TheGlobalSettings.alarm2);
+	  
+	  Renderer_SetLed(alarm1Scheduled ? LED_ON : LED_OFF,  alarm2Scheduled ? LED_ON : LED_OFF);
+	}
       }
     }
     
@@ -657,6 +763,36 @@ int main(void)
 	    newDeviceMode = modeShowTime;
 	}
 	break;
+      case modeAlarmFiring:
+	{
+	  if (eventToHandle & (BUTTON1_CLICK | BUTTON2_CLICK | BUTTON3_CLICK | BUTTON4_CLICK))
+	  {
+	    // Consume one alarm.
+	    _Bool silenceAlarm1 = (alarm1Timeout);
+	    
+	    if (alarm1Timeout && alarm2Timeout)
+	    {
+	      // Both alarms are active: Kill the annoying one.
+	      silenceAlarm1 = (TheGlobalSettings.alarm2.flags & ALARM_TYPE_RADIO); // Alarm 2 is a radio, so kill alarm1. Otherwise, kill alarm2.
+	    }
+	    
+	    if (silenceAlarm1)
+	    {
+	      alarm1Timeout = 0;
+	      SilenceAlarm(&TheGlobalSettings.alarm1);
+	    }
+	    else
+	    {
+	      alarm2Timeout = 0;
+	      SilenceAlarm(&TheGlobalSettings.alarm2);
+	    }
+	  }
+	  if (!alarm1Timeout && !alarm2Timeout) 
+	  {
+	    MarkLongPressHandled(eventToHandle); // don't generate shortpresses. 
+	    newDeviceMode = modeShowTime;
+	  }
+	}
       case modeAdjustYearTens:
       case modeAdjustYearOnes:
       case modeAdjustMonth:
@@ -880,6 +1016,14 @@ int main(void)
 	  secMode = SECONDARY_MODE_VOLUME;
 	  Renderer_Update_Secondary();
 	  break;
+	case modeAlarmFiring:
+	  modeTimeout = 0;
+	  Renderer_SetFlashMask(0xff);
+	  timePollAllowed = 1;
+	  editMode = 0;	  
+	  secMode = SECONDARY_MODE_SEC;
+	  mainMode = MAIN_MODE_TIME;
+          break;
 	case modeShowAlarm1:
 	{
 	  Renderer_SetFlashMask(0x00); 
