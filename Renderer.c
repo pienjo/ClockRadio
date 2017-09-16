@@ -15,6 +15,8 @@ static uint8_t blinkStatus = 0;
 static const struct AlarmSetting *alarm = 0;
 
 #define BLINK_PERIOD 10
+#define BLINK_SHORT_PERIOD  3
+#define BLINK_LONG_PERIOD 17
 
 void Renderer_SetAlarmStruct( const struct AlarmSetting *pAlarm )
 {
@@ -57,13 +59,13 @@ static void __privateRender(const uint8_t secondaryMode)
   uint8_t segmentDigits[8] = { 0 };
   
   const uint8_t leftLedState = ledState & 0x0f;
-  if (leftLedState == LED_ON || ( leftLedState == LED_BLINK_LONG && (blinkStatus < BLINK_PERIOD * 3 / 2)) || (leftLedState == LED_BLINK_SHORT && (blinkStatus < BLINK_PERIOD / 2)))
+  if (leftLedState == LED_ON || ( leftLedState == LED_BLINK_LONG && (blinkStatus < BLINK_LONG_PERIOD)) || (leftLedState == LED_BLINK_SHORT && (blinkStatus < BLINK_SHORT_PERIOD)))
   {
     segmentDigits[DIGIT_LEFT_LED] = SEG_LEFT_LED;
   }
   
   const uint8_t rightLedState = ledState >> 4;
-  if (rightLedState == LED_ON || ( rightLedState == LED_BLINK_LONG && (blinkStatus < BLINK_PERIOD * 3 / 2)) || (rightLedState == LED_BLINK_SHORT && (blinkStatus < BLINK_PERIOD / 2)))
+  if (rightLedState == LED_ON || ( rightLedState == LED_BLINK_LONG && (blinkStatus < BLINK_LONG_PERIOD)) || (rightLedState == LED_BLINK_SHORT && (blinkStatus < BLINK_SHORT_PERIOD)))
   {
     segmentDigits[DIGIT_RIGHT_LED] = SEG_RIGHT_LED;
   }
@@ -188,14 +190,14 @@ static void __privateRender(const uint8_t secondaryMode)
     if (blinkStatus < BLINK_PERIOD)
     {
       uint8_t digitMask = blinkMask & 0xff;
-      for (uint8_t i = 0, mask = 0x80; i < 4; ++i, mask >>= 1)
+      for (uint8_t j = 0, mask = 0x80; j < 4; ++j, mask >>= 1)
       {
 	if (digitMask & mask)
-	  mainDigit[i] = 0;
+	  mainDigit[j] = ( i == 7 ? 0x0f : 0);
       }
       
       if (blinkMask & 0x100)
-	wday_mask = 0;
+	wday_mask = (i == 7 ? 3 : 0);
     }
     
     // day-of-week on 0 and 1, Digit 0 at 3, space at 7
@@ -276,7 +278,6 @@ void Renderer_Update_Main(const uint8_t mainMode,const _Bool animate)
   }
   else
   {
-    blinkStatus = BLINK_PERIOD;
     animationState = 1;
   }
 }
@@ -284,5 +285,4 @@ void Renderer_Update_Main(const uint8_t mainMode,const _Bool animate)
 void Renderer_SetFlashMask(const uint16_t mask)
 {
   blinkMask = mask; 
-  blinkStatus = BLINK_PERIOD - 2;
 }
