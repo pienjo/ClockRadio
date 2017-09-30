@@ -32,7 +32,7 @@ LDFLAGS+= -Wl,-Map=$(TARGET).map
 all: $(TARGET).hex
 
 clean: 
-	rm -rf $(OBJECTS) $(DEPS) obj/$(TARGET).elf $(TARGET).hex $(TARGET).map	font.c
+	rm -rf $(OBJECTS) $(DEPS) obj/$(TARGET).elf $(TARGET).hex $(TARGET).map	font.c $(TARGET).lst
 
 realclean:  clean
 	rm -rf obj
@@ -56,7 +56,7 @@ obj/$(TARGET).elf: $(OBJECTS)
 %.hex: obj/%.elf
 	$(OBJCOPY) -O ihex -R .eeprom  $< $@
 
-%.lst: %.elf
+%.lst: obj/%.elf
 	$(OBJDUMP) -S -j .text $< > $@
 
 flash: $(TARGET).hex
