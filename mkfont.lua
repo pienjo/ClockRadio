@@ -2,10 +2,19 @@ local fontfile = io.open(arg[1], "r")
 if not fontfile then error ("Unable to open ".. arg[1]) end
 
 local font = { }
+local labels = { }
 local charWidth = 5
+local lineIter = fontfile:lines()
+
+-- Read in description labels
+local firstLine = lineIter()
+local nrChars = math.floor (#firstLine / charWidth)
+
+for label in string.gmatch(firstLine, "%g") do
+  table.insert(labels, label)
+end
 
 for line in fontfile:lines() do
-  local nrChars = math.floor (#line / charWidth)
   
   for charNumber = 1, nrChars do
     local char = font[charNumber]
@@ -38,7 +47,9 @@ for _, c in pairs(font) do
   for i = 1, #c,2 do
     table.insert(str, "0x"..c[i+1]..c[i])
   end
-  print ("  " .. table.concat(str, ", ") .. ", ")
+  local label = labels[_]
+
+  print ("  " .. table.concat(str, ", ") .. ", // [".. (_ - 1).."] " .. (label or ""))
 end
 
 print ("};")
