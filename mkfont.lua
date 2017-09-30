@@ -37,10 +37,11 @@ for line in fontfile:lines() do
     table.insert(char, string.format("%x",thisdef))
   end
 end
+
 print ("#include <font.h>")
 print ""
 print ("// two rows per byte, lower nybble first, 4 bytes per char")
-print ("const uint8_t PROGMEM font[40] = {")
+print ("const uint8_t PROGMEM font[] = {")
 
 for _, c in pairs(font) do
   local str = {}
