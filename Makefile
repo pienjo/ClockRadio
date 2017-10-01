@@ -14,7 +14,7 @@ CURRENT_DIR = $(shell pwd)
 # For UsbTiny ISP
 AVRDUDE_FLAGS = -c usbtiny
 
-SOURCES= main.c bitmap.c font.c Panels.c Renderer.c DS1307.c 7Segment.c i2c.c SI4702.c longpress.c settings.c
+SOURCES= bitmap.c font.c main.c Panels.c Renderer.c DS1307.c 7Segment.c i2c.c SI4702.c longpress.c settings.c
 A_SOURCES = 
 TARGET= PanelClock
 
@@ -40,8 +40,6 @@ realclean:  clean
 outputdir:
 	mkdir -p obj
 
-obj/Renderer.o: bitmap.h
-
 -include $(DEPS)
 font.c:	font.txt
 	lua mkfont.lua font.txt > font.c
@@ -49,7 +47,7 @@ font.c:	font.txt
 bitmap.h: bitmap.txt
 	lua mkbitmap_header.lua bitmap.txt > bitmap.h
 
-bitmap.c: bitmap.txt
+bitmap.c: bitmap.txt bitmap.h
 	lua mkbitmap_source.lua bitmap.txt > bitmap.c
 	
 obj/%.o: %.c
