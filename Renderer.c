@@ -1,6 +1,7 @@
 #include "Panels.h"
 #include "Renderer.h"
 #include "font.h"
+#include "bitmap.h"
 #include "7Segment.h"
 #include "DateTime.h"
 #include "settings.h"
@@ -252,24 +253,19 @@ static void __privateRender(const uint8_t secondaryMode)
     }
     else if (myMainMode == MAIN_MODE_SLEEP)
     {
-      // Write out "SLEEP".
-      const uint8_t s = __getDigitMaskSingle(13, i);
-      const uint8_t l = __getDigitMaskSingle(14, i);
-      const uint8_t e = __getDigitMaskSingle(15, i);
-      const uint8_t p = __getDigitMaskSingle(12, i);
-      data[0] = s | (l << 5);
-      data[1] = (l >>3 ) | (e << 2) | (e <<7);
-      data[2] = (e >> 1) | (p << 4);
+      // Write out "SLEEP" bitmap
+      const uint8_t *b = Bitmap_Sleep + (i * 3);
+      data[0] = pgm_read_byte(b + 0);
+      data[1] = pgm_read_byte(b + 1);
+      data[2] = pgm_read_byte(b + 2);
     }     
     else if (myMainMode == MAIN_MODE_NAP)
     {
-      // Write out "NAP".
-      const uint8_t n = __getDigitMaskSingle(10, i);
-      const uint8_t a = __getDigitMaskSingle(11, i);
-      const uint8_t p = __getDigitMaskSingle(12, i);
-      data[0] = n | (a <<  5) ;
-      data[1] = (a >> 3) | (p << 2);
-      data[2] = 0;
+      // Write out "NAP" bitmap
+      const uint8_t *b = Bitmap_Nap + (i * 3);
+      data[0] = pgm_read_byte(b + 0);
+      data[1] = pgm_read_byte(b + 1);
+      data[2] = pgm_read_byte(b + 2);
     }
     // Rotate the 7-segment data
     const uint8_t row_mask = 1<<i;

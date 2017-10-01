@@ -1,4 +1,6 @@
 *.map
 *.hex
 font.c
+bitmap.h
+bitmap.c
 obj/*
