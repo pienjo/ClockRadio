@@ -16,4 +16,7 @@ struct DateTime
 };
 
 extern struct DateTime TheDateTime;
+extern uint8_t TheSleepTime; // In minutes
+extern uint8_t TheNapTime; // In minutes
+
 #endif

@@ -23,6 +23,21 @@ void Renderer_SetAlarmStruct( const struct AlarmSetting *pAlarm )
   alarm = pAlarm;
 }
 
+static uint8_t __getDigitMaskSingle(const uint8_t character, const int8_t row)
+{
+  // Two rows per byte, lower nybble first.
+  uint8_t tworow = pgm_read_byte(font +  character * 4 + row/2);
+
+  if (row & 1)
+  {
+    return tworow >> 4;
+  }
+  else
+  {
+    return tworow & 0xf;
+  }
+}
+
 static uint8_t __getDigitMask(uint8_t prevDigit, uint8_t currentDigit, int8_t row)
 {
   uint8_t digitToShow = currentDigit;
@@ -39,17 +54,8 @@ static uint8_t __getDigitMask(uint8_t prevDigit, uint8_t currentDigit, int8_t ro
     digitToShow = prevDigit;
     row = row + 8; // wrap around
   }
-  // Two rows per byte, lower nybble first.
-  uint8_t tworow = pgm_read_byte(font + digitToShow * 4 + row/2);
-
-  if (row & 1)
-  {
-    return tworow >> 4;
-  }
-  else
-  {
-    return tworow & 0xf;
-  }
+  
+  return __getDigitMaskSingle(digitToShow, row);
 }
 static void __privateRender(const uint8_t secondaryMode)
 {
@@ -120,7 +126,38 @@ static void __privateRender(const uint8_t secondaryMode)
 
       break;
     }
+    case SECONDARY_MODE_NAP:
+    {
+      uint8_t hours = TheNapTime / 60;
+      uint8_t mins = TheNapTime % 60;
+      segmentDigits[DIGIT_4] = pgm_read_byte(BCDToSegment + (mins%10));
+      mins /= 10;
+      segmentDigits[DIGIT_3] = pgm_read_byte(BCDToSegment + mins);
+      
+      if (hours)
+      {
+	segmentDigits[DIGIT_2] = pgm_read_byte(BCDToSegment + hours) | SEG_DP;
+      }
+      break;
+    }
+    case SECONDARY_MODE_SLEEP:
+    {
+      uint8_t hours = TheSleepTime / 60;
+      uint8_t mins = TheSleepTime % 60;
+      segmentDigits[DIGIT_4] = pgm_read_byte(BCDToSegment + (mins%10));
+      mins /= 10;
+      segmentDigits[DIGIT_3] = pgm_read_byte(BCDToSegment + mins);
+      
+      if (hours)
+      {
+	segmentDigits[DIGIT_2] = pgm_read_byte(BCDToSegment + hours) | SEG_DP;
+      }
+      break;
+    }
   }
+  
+  if (TheNapTime > 0)
+    segmentDigits[DIGIT_4] |= SEG_DP;
   
   
   if (blinkStatus < BLINK_PERIOD)
@@ -134,82 +171,106 @@ static void __privateRender(const uint8_t secondaryMode)
     if (blinkMask & 0x01)
       segmentDigits[DIGIT_4] = 0;
   }
-
-  uint8_t mainDigit[4] = {0};
+  
+  
   for (uint8_t i = 0; i < 8; ++i)
   {
-    uint8_t dotMask = 0; 
-    uint8_t wday_mask = 0;
-    switch(myMainMode)
+    if (myMainMode < MAIN_MODE_SLEEP)
     {
-      case MAIN_MODE_TIME:
-	mainDigit[0] = __getDigitMask(previousHour >> 4, TheDateTime.hour >> 4, i);
-	mainDigit[1] = __getDigitMask(previousHour &0xf, TheDateTime.hour & 0xf, i);
-	mainDigit[2] = __getDigitMask(previousMinute >> 4, TheDateTime.min >> 4, i);
-	mainDigit[3] = __getDigitMask(previousMinute &0xf, TheDateTime.min & 0xf, i);
-	dotMask =  (i == 1 || i == 5) ? 0x20 : 0;
-	wday_mask =  ( i == TheDateTime.wday - 1) ? 0x3: 0;
-	break;
-      case MAIN_MODE_DATE:
-	mainDigit[0] = __getDigitMask(TheDateTime.day >> 4, TheDateTime.day >> 4, i);
-	mainDigit[1] = __getDigitMask(TheDateTime.day &0xf, TheDateTime.day & 0xf, i);
-	mainDigit[2] = __getDigitMask(TheDateTime.month >> 4, TheDateTime.month >> 4, i);
-	mainDigit[3] = __getDigitMask(TheDateTime.month &0xf, TheDateTime.month & 0xf, i);
-	dotMask = (i < 2 ? 0x40 : (i <5 ? 0x20 : (i < 7 ? 0x10 : 0)));
-	wday_mask =  ( i == TheDateTime.wday - 1) ? 0x3: 0;
-	break;
-      case MAIN_MODE_ALARM:
-	if (alarm)
-	{
-	  mainDigit[0] = __getDigitMask(alarm->hour >>4, alarm->hour >>4, i);
-	  mainDigit[1] = __getDigitMask(alarm->hour &0xf, alarm->hour & 0xf, i);
-	  mainDigit[2] = __getDigitMask(alarm->min >> 4, alarm->min >> 4, i);
-	  mainDigit[3] = __getDigitMask(alarm->min &0xf, alarm->min &0xf, i);
+      uint8_t mainDigit[4] = {0};
+      uint8_t dotMask = 0; 
+      uint8_t wday_mask = 0;
+      switch(myMainMode)
+      {
+	case MAIN_MODE_TIME:
+	  mainDigit[0] = __getDigitMask(previousHour >> 4, TheDateTime.hour >> 4, i);
+	  mainDigit[1] = __getDigitMask(previousHour &0xf, TheDateTime.hour & 0xf, i);
+	  mainDigit[2] = __getDigitMask(previousMinute >> 4, TheDateTime.min >> 4, i);
+	  mainDigit[3] = __getDigitMask(previousMinute &0xf, TheDateTime.min & 0xf, i);
 	  dotMask =  (i == 1 || i == 5) ? 0x20 : 0;
-	  if (i == 7)
-	    wday_mask = 0;
-	  else
+	  wday_mask =  ( i == TheDateTime.wday - 1) ? 0x3: 0;
+	  break;
+	case MAIN_MODE_DATE:
+	  mainDigit[0] = __getDigitMaskSingle(TheDateTime.day >> 4, i);
+	  mainDigit[1] = __getDigitMaskSingle(TheDateTime.day &0xf, i);
+	  mainDigit[2] = __getDigitMaskSingle(TheDateTime.month >> 4, i);
+	  mainDigit[3] = __getDigitMaskSingle(TheDateTime.month &0xf, i);
+	  dotMask = (i < 2 ? 0x40 : (i <5 ? 0x20 : (i < 7 ? 0x10 : 0)));
+	  wday_mask =  ( i == TheDateTime.wday - 1) ? 0x3: 0;
+	  break;
+	case MAIN_MODE_ALARM:
+	  if (alarm)
 	  {
-	    switch (alarm->flags & ALARM_DAY_BITS)
+	    mainDigit[0] = __getDigitMaskSingle(alarm->hour >>4, i);
+	    mainDigit[1] = __getDigitMaskSingle(alarm->hour &0xf, i);
+	    mainDigit[2] = __getDigitMaskSingle(alarm->min >> 4, i);
+	    mainDigit[3] = __getDigitMaskSingle(alarm->min &0xf, i);
+	    dotMask =  (i == 1 || i == 5) ? 0x20 : 0;
+	    if (i == 7)
+	      wday_mask = 0;
+	    else
 	    {
-	      case ALARM_DAY_DAILY:
-		wday_mask = 3;
-		break;
-	      case ALARM_DAY_WEEK:
-		wday_mask = (i < 5) ? 3 : 0;
-		break;
-	      case ALARM_DAY_WEEKEND:
-		wday_mask = (i >= 5 && i ) ? 3 : 0;
-		break;
+	      switch (alarm->flags & ALARM_DAY_BITS)
+	      {
+		case ALARM_DAY_DAILY:
+		  wday_mask = 3;
+		  break;
+		case ALARM_DAY_WEEK:
+		  wday_mask = (i < 5) ? 3 : 0;
+		  break;
+		case ALARM_DAY_WEEKEND:
+		  wday_mask = (i >= 5 && i ) ? 3 : 0;
+		  break;
+	      }
 	    }
 	  }
-	}
-	break;
-    }
-    
-    if (blinkStatus < BLINK_PERIOD)
-    {
-      uint8_t digitMask = blinkMask & 0xff;
-      for (uint8_t j = 0, mask = 0x80; j < 4; ++j, mask >>= 1)
-      {
-	if (digitMask & mask)
-	  mainDigit[j] = ( i == 7 ? 0x0f : 0);
+	  break;
       }
       
-      if (blinkMask & 0x100)
-	wday_mask = (i == 7 ? 3 : 0);
+      if (blinkStatus < BLINK_PERIOD)
+      {
+	uint8_t digitMask = blinkMask & 0xff;
+	for (uint8_t j = 0, mask = 0x80; j < 4; ++j, mask >>= 1)
+	{
+	  if (digitMask & mask)
+	    mainDigit[j] = ( i == 7 ? 0x0f : 0);
+	}
+	
+	if (blinkMask & 0x100)
+	  wday_mask = (i == 7 ? 3 : 0);
+      }
+      
+      // day-of-week on 0 and 1, Digit 0 at 3, space at 7
+      data[0] = (mainDigit[0] <<3) | wday_mask ;
+
+      // Digit 1 at 8-10, space at 11, dot at 12, space at 13, digit 2 at 14-17
+
+      data[1] = (mainDigit[1] | dotMask | (mainDigit[2] << 7));
+      
+      // space at 18, digit 3 at 19-23
+      data[2] = (mainDigit[2] >> 1) | (mainDigit[3] << 4);
     }
-    
-    // day-of-week on 0 and 1, Digit 0 at 3, space at 7
-    data[0] = (mainDigit[0] <<3) | wday_mask ;
-
-    // Digit 1 at 8-10, space at 11, dot at 12, space at 13, digit 2 at 14-17
-
-    data[1] = (mainDigit[1] | dotMask | (mainDigit[2] << 7));
-    
-    // space at 18, digit 3 at 19-23
-    data[2] = (mainDigit[2] >> 1) | (mainDigit[3] << 4);
-   
+    else if (myMainMode == MAIN_MODE_SLEEP)
+    {
+      // Write out "SLEEP".
+      const uint8_t s = __getDigitMaskSingle(13, i);
+      const uint8_t l = __getDigitMaskSingle(14, i);
+      const uint8_t e = __getDigitMaskSingle(15, i);
+      const uint8_t p = __getDigitMaskSingle(12, i);
+      data[0] = s | (l << 5);
+      data[1] = (l >>3 ) | (e << 2) | (e <<7);
+      data[2] = (e >> 1) | (p << 4);
+    }     
+    else if (myMainMode == MAIN_MODE_NAP)
+    {
+      // Write out "NAP".
+      const uint8_t n = __getDigitMaskSingle(10, i);
+      const uint8_t a = __getDigitMaskSingle(11, i);
+      const uint8_t p = __getDigitMaskSingle(12, i);
+      data[0] = n | (a <<  5) ;
+      data[1] = (a >> 3) | (p << 2);
+      data[2] = 0;
+    }
     // Rotate the 7-segment data
     const uint8_t row_mask = 1<<i;
 

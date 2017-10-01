@@ -8,7 +8,7 @@ local lineIter = fontfile:lines()
 
 -- Read in description labels
 local firstLine = lineIter()
-local nrChars = math.floor (#firstLine / charWidth)
+local nrChars = math.ceil (#firstLine / charWidth)
 
 for label in string.gmatch(firstLine, "%g") do
   table.insert(labels, label)

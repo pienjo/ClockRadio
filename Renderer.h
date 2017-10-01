@@ -9,7 +9,9 @@ enum enumMainMode
 {
   MAIN_MODE_TIME,
   MAIN_MODE_DATE,
-  MAIN_MODE_ALARM
+  MAIN_MODE_ALARM,
+  MAIN_MODE_SLEEP,
+  MAIN_MODE_NAP,
 };
 
 enum enumSecondaryMode
@@ -18,7 +20,9 @@ enum enumSecondaryMode
   SECONDARY_MODE_YEAR,
   SECONDARY_MODE_RADIO,
   SECONDARY_MODE_VOLUME,
-  SECONDARY_MODE_ALARM
+  SECONDARY_MODE_ALARM,
+  SECONDARY_MODE_SLEEP,
+  SECONDARY_MODE_NAP,
 };
 
 void Renderer_Tick( const uint8_t secondaryMode ); // Must be called regularly for animations 

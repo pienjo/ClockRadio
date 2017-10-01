@@ -19,6 +19,9 @@
 struct DateTime TheDateTime;
 struct DateTime ThePreviousDateTime;
 
+uint8_t TheSleepTime = 0;
+uint8_t TheNapTime = 0;
+
 #define EDIT_MODE_ONES     0x1
 #define EDIT_MODE_TENS     0x2
 #define EDIT_MODE_NUMBER   (EDIT_MODE_ONES |EDIT_MODE_TENS)
@@ -36,6 +39,8 @@ struct DateTime ThePreviousDateTime;
 
 #define ALARM_BEEP_TIMEOUT   4
 #define ALARM_RADIO_TIMEOUT  60
+#define INITIAL_SLEEPTIME    2
+#define INITIAL_NAPTIME      INITIAL_SLEEPTIME
 
 uint8_t beepState = 0;
 
@@ -66,6 +71,8 @@ enum clockMode
   modeAdjustMinsOnes_Alarm,
   modeAdjustDays_Alarm,
   modeAdjustType_Alarm,
+  modeAdjustSleep,
+  modeAdjustNap,
 } ;
 
 volatile uint16_t event ;
@@ -276,6 +283,7 @@ void RadioOff()
   
   SI4702_PowerOff();
   radioIsOn = 0;
+  TheSleepTime = 0;
 }
 
 void HandleEditUp(const uint8_t editMode, uint8_t *const editDigit, const uint8_t editMaxValue)
@@ -370,6 +378,8 @@ void HandleEditDown(const uint8_t editMode, uint8_t *const editDigit, const uint
 
 uint8_t alarm1Timeout = 0; // minutes
 uint8_t alarm2Timeout = 0; // minutes
+uint8_t napTimeout = 0; // minutes
+
 _Bool alarm1Scheduled = 0, alarm2Scheduled = 0;
 
 void SilenceAlarm(struct AlarmSetting *alarm)
@@ -409,6 +419,16 @@ _Bool AlarmTriggered(struct AlarmSetting *alarm)
   
   return 1;
 }
+
+void HandleCycleTime(uint8_t *time)
+{
+  uint8_t remainder = *time % 15;
+  
+  *time += (15 - remainder);
+  if (*time > 90)
+    *time = 0;
+}
+
 int main(void)
 {
   // Enable output on PORT C2 (amplifier control) and C1 (beeper)
@@ -531,41 +551,72 @@ int main(void)
 	    if (!alarm2Timeout)
 	      SilenceAlarm(&TheGlobalSettings.alarm2);
 	  }
-	}
-	
-	// See if alarms must fire.
-	if (alarm1Scheduled && AlarmTriggered(&TheGlobalSettings.alarm1))
-	{
-	  if (TheGlobalSettings.alarm1.flags & ALARM_TYPE_RADIO)
+	  
+	  if (TheSleepTime && deviceMode != modeAdjustSleep)
 	  {
-	    RadioOn();
-	    alarm1Timeout = ALARM_RADIO_TIMEOUT;
-	  }
-	  else
-	  {
-	    BeepOn();
-	    alarm1Timeout = ALARM_BEEP_TIMEOUT;
+	    TheSleepTime--;
+	    if (TheSleepTime == 0)
+	    {
+	      RadioOff();
+	      if (deviceMode == modeShowRadio || deviceMode == modeShowRadio_Volume)
+		newDeviceMode = modeShowTime;
+	    }
 	  }
 	  
-	  newDeviceMode = modeAlarmFiring;
-	}
-	
-	if ( alarm2Scheduled && AlarmTriggered(&TheGlobalSettings.alarm2))
-	{
-	  if (TheGlobalSettings.alarm2.flags & ALARM_TYPE_RADIO)
+	  if (napTimeout)
 	  {
-	    RadioOn();
-	    alarm2Timeout = ALARM_RADIO_TIMEOUT;
-	  }
-	  else
-	  {
-	    BeepOn();
-	    alarm2Timeout = ALARM_BEEP_TIMEOUT;
+	    napTimeout--;
+	    if (!napTimeout)
+	    {
+	      BeepOff();
+	    }
 	  }
 	  
-	  newDeviceMode = modeAlarmFiring;
-	}
-	
+	  // See if nap timer must fire
+	  if (TheNapTime && deviceMode != modeAdjustNap)
+	  {
+	    TheNapTime--;
+	    if (TheNapTime == 0)
+	    {
+	      BeepOn();
+	      napTimeout = ALARM_BEEP_TIMEOUT;
+	      newDeviceMode = modeAlarmFiring;
+	    }
+	  }
+	  
+	  // See if alarms must fire.
+	  if (alarm1Scheduled && AlarmTriggered(&TheGlobalSettings.alarm1))
+	  {
+	    if (TheGlobalSettings.alarm1.flags & ALARM_TYPE_RADIO)
+	    {
+	      RadioOn();
+	      alarm1Timeout = ALARM_RADIO_TIMEOUT;
+	    }
+	    else
+	    {
+	      BeepOn();
+	      alarm1Timeout = ALARM_BEEP_TIMEOUT;
+	    }
+	    
+	    newDeviceMode = modeAlarmFiring;
+	  }
+	  
+	  if ( alarm2Scheduled && AlarmTriggered(&TheGlobalSettings.alarm2))
+	  {
+	    if (TheGlobalSettings.alarm2.flags & ALARM_TYPE_RADIO)
+	    {
+	      RadioOn();
+	      alarm2Timeout = ALARM_RADIO_TIMEOUT;
+	    }
+	    else
+	    {
+	      BeepOn();
+	      alarm2Timeout = ALARM_BEEP_TIMEOUT;
+	    }
+	    
+	    newDeviceMode = modeAlarmFiring;
+	  }
+        }	
 	ThePreviousDateTime = TheDateTime;
 	
 	if (deviceMode < modeShowAlarm1)
@@ -583,6 +634,19 @@ int main(void)
     {
       case modeShowTime:
       {
+	if (eventToHandle & BUTTON5_CLICK)
+	{
+	  if (radioIsOn)
+	  {
+	    newDeviceMode = modeAdjustSleep;
+	  }
+	  else
+	  {
+	    newDeviceMode = modeAdjustNap;
+	    
+	  }
+	  break;
+	}
 	if (eventToHandle & BUTTON2_CLICK)
 	{
 	  MarkLongPressHandled(BUTTON2_CLICK);
@@ -595,6 +659,7 @@ int main(void)
 	    RadioOn();
 	    newDeviceMode = modeShowRadio;
 	  }
+	  break;
 	}
 	if (longPressEvent.longPress & BUTTON1_CLICK)
 	{
@@ -630,6 +695,12 @@ int main(void)
 	break;
       }
       case modeShowRadio:
+	if (eventToHandle & BUTTON5_CLICK)
+	{	
+	  newDeviceMode = modeAdjustSleep;
+	  break;
+	}
+	// fall-through
       case modeShowRadio_Volume:
       {
 	
@@ -765,29 +836,37 @@ int main(void)
 	break;
       case modeAlarmFiring:
 	{
-	  if (eventToHandle & (BUTTON1_CLICK | BUTTON2_CLICK | BUTTON3_CLICK | BUTTON4_CLICK))
+	  if (eventToHandle & (BUTTON1_CLICK | BUTTON2_CLICK | BUTTON3_CLICK | BUTTON4_CLICK | BUTTON5_CLICK))
 	  {
-	    // Consume one alarm.
-	    _Bool silenceAlarm1 = (alarm1Timeout);
-	    
-	    if (alarm1Timeout && alarm2Timeout)
+	    if (napTimeout)
 	    {
-	      // Both alarms are active: Kill the annoying one.
-	      silenceAlarm1 = (TheGlobalSettings.alarm2.flags & ALARM_TYPE_RADIO); // Alarm 2 is a radio, so kill alarm1. Otherwise, kill alarm2.
-	    }
-	    
-	    if (silenceAlarm1)
-	    {
-	      alarm1Timeout = 0;
-	      SilenceAlarm(&TheGlobalSettings.alarm1);
+	      napTimeout = 0; 
+	      BeepOff();
 	    }
 	    else
 	    {
-	      alarm2Timeout = 0;
-	      SilenceAlarm(&TheGlobalSettings.alarm2);
+	      // Consume one alarm.
+	      _Bool silenceAlarm1 = (alarm1Timeout);
+	      
+	      if (alarm1Timeout && alarm2Timeout)
+	      {
+		// Both alarms are active: Kill the annoying one.
+		silenceAlarm1 = (TheGlobalSettings.alarm2.flags & ALARM_TYPE_RADIO); // Alarm 2 is a radio, so kill alarm1. Otherwise, kill alarm2.
+	      }
+	      
+	      if (silenceAlarm1)
+	      {
+		alarm1Timeout = 0;
+		SilenceAlarm(&TheGlobalSettings.alarm1);
+	      }
+	      else
+	      {
+		alarm2Timeout = 0;
+		SilenceAlarm(&TheGlobalSettings.alarm2);
+	      }
 	    }
 	  }
-	  if (!alarm1Timeout && !alarm2Timeout) 
+	  if (!alarm1Timeout && !alarm2Timeout && !napTimeout) 
 	  {
 	    MarkLongPressHandled(eventToHandle); // don't generate shortpresses. 
 	    newDeviceMode = modeShowTime;
@@ -917,6 +996,27 @@ int main(void)
 	  alarmBeingModified.flags ^= ALARM_TYPE_RADIO;
 	}
 	break;
+      }
+      
+      case modeAdjustSleep:
+      {
+	if (eventToHandle & BUTTON5_CLICK)
+	{
+	  modeTimeout = SHOW_ALARM_TIMEOUT; 
+	  HandleCycleTime(&TheSleepTime);
+	  updateScreen = 1;
+	}
+	break;      
+      }
+      case modeAdjustNap:
+      {
+	if (eventToHandle & BUTTON5_CLICK)
+	{
+	  modeTimeout = SHOW_ALARM_TIMEOUT; 
+	  HandleCycleTime(&TheNapTime);
+	  updateScreen = 1;
+	}
+	break;      
       }
     }
     
@@ -1080,6 +1180,20 @@ int main(void)
 	case modeAdjustType_Alarm:
 	  modeTimeout = 255;
 	  Renderer_SetFlashMask(0x0f);
+	  break;
+	case modeAdjustNap: 
+	  if (TheNapTime == 0)
+	    TheNapTime = INITIAL_NAPTIME;
+	  modeTimeout = SHOW_ALARM_TIMEOUT; 
+	  mainMode = MAIN_MODE_NAP;
+	  secMode = SECONDARY_MODE_NAP;
+	  break;
+	case modeAdjustSleep:
+	  if (TheSleepTime == 0)
+	    TheSleepTime = INITIAL_SLEEPTIME;
+	  modeTimeout = SHOW_ALARM_TIMEOUT; 
+	  mainMode = MAIN_MODE_SLEEP;
+	  secMode = SECONDARY_MODE_SLEEP;
 	  break;
         default:
 	
