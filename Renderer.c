@@ -64,17 +64,36 @@ static void __privateRender(const uint8_t secondaryMode)
 
   // Pre-compute the data for the 7-segment displays, it needs to be rotated
   uint8_t segmentDigits[8] = { 0 };
+  uint8_t myLedState = ledState;
+  uint8_t thisLedState = myLedState & 0x03;
+  myLedState >>= 2;
   
-  const uint8_t leftLedState = ledState & 0x0f;
-  if (leftLedState == LED_ON || ( leftLedState == LED_BLINK_LONG && (blinkStatus < BLINK_LONG_PERIOD)) || (leftLedState == LED_BLINK_SHORT && (blinkStatus < BLINK_SHORT_PERIOD)))
+  if (thisLedState == LED_ON || ( thisLedState == LED_BLINK_LONG && (blinkStatus < BLINK_LONG_PERIOD)) || (thisLedState == LED_BLINK_SHORT && (blinkStatus < BLINK_SHORT_PERIOD)))
   {
-    segmentDigits[DIGIT_LEFT_LED] = SEG_LEFT_LED;
+    segmentDigits[DIGIT_LEFTMOST_LED] = SEG_LED;
   }
   
-  const uint8_t rightLedState = ledState >> 4;
-  if (rightLedState == LED_ON || ( rightLedState == LED_BLINK_LONG && (blinkStatus < BLINK_LONG_PERIOD)) || (rightLedState == LED_BLINK_SHORT && (blinkStatus < BLINK_SHORT_PERIOD)))
+  thisLedState = myLedState & 0x03;
+  myLedState >>= 2;
+  
+  if (thisLedState == LED_ON || ( thisLedState == LED_BLINK_LONG && (blinkStatus < BLINK_LONG_PERIOD)) || (thisLedState == LED_BLINK_SHORT && (blinkStatus < BLINK_SHORT_PERIOD)))
   {
-    segmentDigits[DIGIT_RIGHT_LED] = SEG_RIGHT_LED;
+    segmentDigits[DIGIT_LEFT_LED] = SEG_LED;
+  }
+
+  thisLedState = myLedState & 0x03;
+  myLedState >>= 2;
+  
+  if (thisLedState == LED_ON || ( thisLedState == LED_BLINK_LONG && (blinkStatus < BLINK_LONG_PERIOD)) || (thisLedState == LED_BLINK_SHORT && (blinkStatus < BLINK_SHORT_PERIOD)))
+  {
+    segmentDigits[DIGIT_RIGHT_LED] = SEG_LED;
+  }
+  
+  thisLedState = myLedState & 0x03;
+  
+  if (thisLedState == LED_ON || ( thisLedState == LED_BLINK_LONG && (blinkStatus < BLINK_LONG_PERIOD)) || (thisLedState == LED_BLINK_SHORT && (blinkStatus < BLINK_SHORT_PERIOD)))
+  {
+    segmentDigits[DIGIT_RIGHTMOST_LED] = SEG_LED;
   }
   
   switch (secondaryMode)
@@ -156,10 +175,6 @@ static void __privateRender(const uint8_t secondaryMode)
       break;
     }
   }
-  
-  if (TheNapTime > 0)
-    segmentDigits[DIGIT_4] |= SEG_DP;
-  
   
   if (blinkStatus < BLINK_PERIOD)
   {
@@ -272,7 +287,7 @@ static void __privateRender(const uint8_t secondaryMode)
 
     data[3] = 0;
 
-    for(uint8_t j = 0, column_mask = 1; j < 7; ++j, column_mask <<= 1)
+    for(uint8_t j = 0, column_mask = 1; j < 8; ++j, column_mask <<= 1)
       if (segmentDigits[j] & row_mask)
 	data[3] |= column_mask;
     
@@ -287,7 +302,7 @@ void Renderer_Tick(uint8_t secondaryMode)
   
   _Bool doRender = 0;
   
-  uint8_t ledBlinking = ledState & 0x22; // Blink on 10 and 11, not on 00 and 01
+  uint8_t ledBlinking = ledState & 0xaa; // Blink on 10 and 11, not on 00 and 01
   
   if (animationState & 0x80 || (blinkMask && (blinkStatus == 0 || blinkStatus == BLINK_PERIOD)) || ledBlinking != 0)
   {
@@ -317,9 +332,16 @@ void Renderer_Update_Secondary()
   animationState |= 0x80;
 }
 
-void Renderer_SetLed(const uint8_t leftLedState, const uint8_t rightLedState)
+void Renderer_SetLed(const uint8_t leftMostLedState, const uint8_t leftLedState, const uint8_t rightLedState, const uint8_t rightMostLedState)
 {
-  ledState = (leftLedState <<4 ) | (rightLedState & 0x0f);
+  ledState = rightMostLedState;
+  ledState <<= 2;
+  ledState |= rightLedState;
+  ledState <<= 2;
+  ledState |= leftLedState;
+  ledState <<= 2;
+  ledState |= leftMostLedState;
+  
   Renderer_Update_Secondary();
 }
 

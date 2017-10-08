@@ -38,7 +38,7 @@ enum enumLedMode
   LED_BLINK_LONG = 3
 };
 
-void Renderer_SetLed(const uint8_t leftLedState, const uint8_t rightLedState);
+void Renderer_SetLed(const uint8_t leftMostLedState, const uint8_t leftLedState, const uint8_t rightLedState, const uint8_t rightMostLedState);
 
 void Renderer_Update_Secondary();
 

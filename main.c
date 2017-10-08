@@ -425,7 +425,7 @@ void HandleCycleTime(uint8_t *time)
   uint8_t remainder = *time % 15;
   
   *time += (15 - remainder);
-  if (*time > 90)
+  if (*time > 150)
     *time = 0;
 }
 
@@ -624,7 +624,7 @@ int main(void)
 	  alarm1Scheduled = IsAlarmScheduled(&TheGlobalSettings.alarm1);
 	  alarm2Scheduled = IsAlarmScheduled(&TheGlobalSettings.alarm2);
 	  
-	  Renderer_SetLed(alarm1Scheduled ? LED_ON : LED_OFF,  alarm2Scheduled ? LED_ON : LED_OFF);
+	  Renderer_SetLed(TheNapTime > 0 ? LED_ON : LED_OFF, alarm1Scheduled ? LED_ON : LED_OFF,  alarm2Scheduled ? LED_ON : LED_OFF, TheSleepTime > 0 ? LED_ON : TheSleepTime > 0 ? LED_ON : LED_OFF);
 	}
       }
     }
@@ -777,7 +777,7 @@ int main(void)
 	{
 	  modeTimeout = SHOW_ALARM_TIMEOUT;
 	  TheGlobalSettings.alarm1.flags ^= ALARM_ACTIVE;
-	  Renderer_SetLed(TheGlobalSettings.alarm1.flags & ALARM_ACTIVE ? LED_BLINK_LONG : LED_BLINK_SHORT, IsAlarmScheduled( &TheGlobalSettings.alarm2) ? LED_ON : LED_OFF);	
+	  Renderer_SetLed(TheNapTime > 0 ? LED_ON : LED_OFF, TheGlobalSettings.alarm1.flags & ALARM_ACTIVE ? LED_BLINK_LONG : LED_BLINK_SHORT, IsAlarmScheduled( &TheGlobalSettings.alarm2) ? LED_ON : LED_OFF, TheSleepTime > 0 ? LED_ON : LED_OFF);	
 	}
 	
 	if ((eventToHandle & CLOCK_UPDATE) && (--modeTimeout == 0) )
@@ -806,7 +806,7 @@ int main(void)
 	{
 	  modeTimeout = SHOW_ALARM_TIMEOUT;
 	  TheGlobalSettings.alarm2.flags ^= ALARM_ACTIVE;
-	  Renderer_SetLed(IsAlarmScheduled( &TheGlobalSettings.alarm1) ? LED_ON : LED_OFF, TheGlobalSettings.alarm2.flags & ALARM_ACTIVE ? LED_BLINK_LONG : LED_BLINK_SHORT);
+	  Renderer_SetLed(TheNapTime > 0 ? LED_ON : LED_OFF, IsAlarmScheduled( &TheGlobalSettings.alarm1) ? LED_ON : LED_OFF, TheGlobalSettings.alarm2.flags & ALARM_ACTIVE ? LED_BLINK_LONG : LED_BLINK_SHORT, TheSleepTime > 0 ? LED_ON : LED_OFF);
 	}
 	
 	if ((eventToHandle & CLOCK_UPDATE) && (--modeTimeout == 0) )
@@ -1000,7 +1000,10 @@ int main(void)
       
       case modeAdjustSleep:
       {
-	if (eventToHandle & BUTTON5_CLICK)
+	if (longPressEvent.shortPress & BUTTON1_CLICK)
+	{
+	  newDeviceMode = modeShowRadio;
+	} else if (eventToHandle & BUTTON5_CLICK)
 	{
 	  modeTimeout = SHOW_ALARM_TIMEOUT; 
 	  HandleCycleTime(&TheSleepTime);
@@ -1010,7 +1013,10 @@ int main(void)
       }
       case modeAdjustNap:
       {
-	if (eventToHandle & BUTTON5_CLICK)
+	if (longPressEvent.shortPress & BUTTON1_CLICK)
+	{
+	  newDeviceMode = modeShowTime;
+	} else if (eventToHandle & BUTTON5_CLICK)
 	{
 	  modeTimeout = SHOW_ALARM_TIMEOUT; 
 	  HandleCycleTime(&TheNapTime);
@@ -1132,7 +1138,7 @@ int main(void)
 	  mainMode = MAIN_MODE_ALARM;
 	  secMode = SECONDARY_MODE_ALARM;
 	  Renderer_SetAlarmStruct(&TheGlobalSettings.alarm1);
-	  Renderer_SetLed(TheGlobalSettings.alarm1.flags & ALARM_ACTIVE ? LED_BLINK_LONG : LED_BLINK_SHORT, IsAlarmScheduled( &TheGlobalSettings.alarm2) ? LED_ON : LED_OFF);
+	  Renderer_SetLed(TheNapTime > 0 ? LED_ON : LED_OFF, TheGlobalSettings.alarm1.flags & ALARM_ACTIVE ? LED_BLINK_LONG : LED_BLINK_SHORT, IsAlarmScheduled( &TheGlobalSettings.alarm2) ? LED_ON : LED_OFF, TheSleepTime > 0 ? LED_ON : LED_OFF);
 	  Renderer_Update_Secondary();
 	  break;
 	}
@@ -1143,7 +1149,7 @@ int main(void)
 	  mainMode = MAIN_MODE_ALARM;
 	  secMode = SECONDARY_MODE_ALARM;
 	  Renderer_SetAlarmStruct(&TheGlobalSettings.alarm2);
-	  Renderer_SetLed(IsAlarmScheduled( &TheGlobalSettings.alarm1) ? LED_ON : LED_OFF, TheGlobalSettings.alarm2.flags & ALARM_ACTIVE ? LED_BLINK_LONG : LED_BLINK_SHORT);
+	  Renderer_SetLed(TheNapTime > 0 ? LED_ON : LED_OFF, IsAlarmScheduled( &TheGlobalSettings.alarm1) ? LED_ON : LED_OFF, TheGlobalSettings.alarm2.flags & ALARM_ACTIVE ? LED_BLINK_LONG : LED_BLINK_SHORT, TheSleepTime > 0 ? LED_ON : LED_OFF);
 	  
 	  Renderer_Update_Secondary();
 	  break;
@@ -1187,6 +1193,7 @@ int main(void)
 	  modeTimeout = SHOW_ALARM_TIMEOUT; 
 	  mainMode = MAIN_MODE_NAP;
 	  secMode = SECONDARY_MODE_NAP;
+	  Renderer_SetLed(LED_BLINK_SHORT, alarm1Scheduled ? LED_ON : LED_OFF,  alarm2Scheduled ? LED_ON : LED_OFF, TheSleepTime > 0 ? LED_ON : TheSleepTime > 0 ? LED_ON : LED_OFF);
 	  break;
 	case modeAdjustSleep:
 	  if (TheSleepTime == 0)
@@ -1194,6 +1201,7 @@ int main(void)
 	  modeTimeout = SHOW_ALARM_TIMEOUT; 
 	  mainMode = MAIN_MODE_SLEEP;
 	  secMode = SECONDARY_MODE_SLEEP;
+	  Renderer_SetLed(TheNapTime > 0 ? LED_ON : LED_OFF, alarm1Scheduled ? LED_ON : LED_OFF,  alarm2Scheduled ? LED_ON : LED_OFF, LED_BLINK_SHORT);
 	  break;
         default:
 	

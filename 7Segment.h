@@ -37,8 +37,15 @@
       3            2
       4            8
 
-  There are two LEDs. Left one is connected between row 1, column 4. Right
+  There are four LEDs. Left one is connected between row 1, column 4. Right
   one is connected between row 2, column 7
+    
+   row            column
+  --------------------
+    1		   4
+    4              6
+    2              1
+    2              7
 */
 
 #define DIGIT_1 3
@@ -46,8 +53,10 @@
 #define DIGIT_3 6
 #define DIGIT_4 0 
 
-#define DIGIT_LEFT_LED 1
-#define DIGIT_RIGHT_LED 4
+#define DIGIT_LEFTMOST_LED  4
+#define DIGIT_LEFT_LED      2
+#define DIGIT_RIGHT_LED     7
+#define DIGIT_RIGHTMOST_LED 1
 
 #define SEG_DP 0x10
 #define SEG_a  0x04
@@ -58,8 +67,7 @@
 #define SEG_f  0x01
 #define SEG_g  0x40
 
-#define SEG_LEFT_LED 0xff
-#define SEG_RIGHT_LED 0xff
+#define SEG_LED 0xff
 
 // Corresponds to the "Code B" font listed in the MAX7219 datasheet, transposed 
 extern const uint8_t PROGMEM BCDToSegment[16];
