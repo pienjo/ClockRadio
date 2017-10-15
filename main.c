@@ -178,12 +178,75 @@ uint8_t GetDaysPerMonth()
 }
 
 const uint8_t PROGMEM dowTable[] = { 0,3,2,5,0,3,5,1,4,6,2,4 };
+
+uint8_t BCDToDec(const uint8_t bcd)
+{
+  return 10 * (bcd >> 4) + (bcd & 0x0f);
+}
 void UpdateDOW()
 {
-  uint8_t year = TheDateTime.year >> 4 | (TheDateTime.year & 0xf); // Undo BCD
-  year -= ( TheDateTime.month < 3);
+  uint8_t year = BCDToDec(TheDateTime.year);
+  const uint8_t month = BCDToDec(TheDateTime.month);
+  const uint8_t day = BCDToDec(TheDateTime.day) - 1;
   
-  TheDateTime.wday = ((year + year / 4 /* -y/100 + y / 400 */ + pgm_read_byte(dowTable + TheDateTime.month -1) + TheDateTime.day) % 7) + 1;
+  year -= ( month < 3);
+  
+  TheDateTime.wday = ((year + year / 4 /* -y/100 + y / 400 */ + pgm_read_byte(dowTable + month -1) + day) % 7) + 1;
+}
+
+void UpdateDST()
+{  
+  // Initialize DST. 
+  
+  if (TheDateTime.month < 3 || TheDateTime.month > 0x10 || (TheDateTime.month == 3 && TheDateTime.day < 0x25))
+  {
+    // Before march 25th (Earliest possible date of DST changeover) or past october: DST not active
+    TheGlobalSettings.dstActive = 0;
+  }
+  else if ((TheDateTime.month > 3 && TheDateTime.month < 0x10) || (TheDateTime.month == 0x10 && TheDateTime.day < 0x25))
+  {
+    // Between April 1st and october 25th (Earliest possible date of DST changeover): DST active
+    TheGlobalSettings.dstActive = 1;
+  }
+  else 
+  {
+    // It is march, and the day is >= 25, and there are 31 days in march. That,
+    // or it is october and the day is >=25, and there are 31 days in october.
+    
+    // Switchover is on the last sunday of march or the last sunday of october:
+    // 
+    // This means there are 7 possibilities:
+    //
+    //  Mon Tue Wed Thu Fri Sat Sun Mon Tue Wed Thu Fri Sat       dow_25
+    //
+    //   25  26  27  28  29  30 *31*                                1
+    //       25  26  27  28  29 *30* 31                             2 
+    //           25  26  27  28 *29* 30  31                         3
+    //               25  26  27 *28* 29  30  31                     4
+    //                   25  26 *27* 28  29  30  31                 5
+    //                       25 *26* 27  28  29  30  31             6 
+    //                          *25* 26  27  28  29  30  31         7
+    
+    
+    // Use today's DOW to backdate the DOW of the 25th.
+    const int8_t day = BCDToDec(TheDateTime.day);
+    int8_t dow_25 = TheDateTime.wday - ( day - 25);
+    if (dow_25 < 1)
+       dow_25 += 7;
+    
+    int8_t dst_day = 32 - dow_25;
+    
+    TheGlobalSettings.dstActive = (TheDateTime.month == 0x10);
+    
+    if (day > dst_day || (day == dst_day && TheDateTime.hour > 2))
+    {
+      // Past DST adjustment time, toggle it.
+      
+      // This assumes that whenever the time is set on the DST adjustment day in the
+      // fall, and it is after 2 AM that DST has been adjusted for already. 
+      TheGlobalSettings.dstActive = !TheGlobalSettings.dstActive;
+    }
+  }
 }
 
 _Bool IsAlarmScheduled(struct AlarmSetting *alarm)
@@ -458,6 +521,9 @@ int main(void)
     TheGlobalSettings.alarm2.min = 0x15; 
     
     TheGlobalSettings.brightness = 3; // Default brightness.
+    UpdateDOW(); // Don't assume the DOW is valid
+    Write_DS1307_DateTime(); // This will reset the seconds divider, but that's acceptable as this is not expected to be called on a valid set clock anyway..
+    UpdateDST(); // Seed the DST state.    
     WriteGlobalSettings();
   }
 
@@ -533,6 +599,29 @@ int main(void)
       {
 	Read_DS1307_DateTime();
 	updateScreen = 1;
+	
+	// See if hours rolled over and it is a sunday
+	if (ThePreviousDateTime.min > TheDateTime.min && TheDateTime.day >= 0x25 && TheDateTime.wday == 7)
+	{
+	  // See if DST must be adjusted: Spring
+	  if (TheDateTime.hour == 2 && TheDateTime.month == 3 && !TheGlobalSettings.dstActive)
+	  {
+	    // Yup.
+	    TheGlobalSettings.dstActive = 1;
+	    TheDateTime.hour = 3;
+	    Write_DS1307_HoursOnly();
+	    writeSettingTimeout = 5;
+	  }
+	  // else see if DST must be adjusted: Fall
+	  else if (TheDateTime.hour == 3 && TheDateTime.month == 0x10 && TheGlobalSettings.dstActive)
+	  {
+	    // Yup
+	    TheGlobalSettings.dstActive = 0;
+	    TheDateTime.hour = 2;
+	    Write_DS1307_HoursOnly();
+	    writeSettingTimeout = 5;
+	  }
+	}
 	
 	// See if alarms must timeout
 	if (ThePreviousDateTime.sec > TheDateTime.sec)
@@ -896,6 +985,8 @@ int main(void)
 	  {
 	    // Done setting time
 	    Write_DS1307_DateTime();
+	    UpdateDST();
+	    writeSettingTimeout = 5;
 	    newDeviceMode = modeShowTime;
 	  }
 	} else if (eventToHandle & BUTTON3_CLICK)
