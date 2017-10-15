@@ -152,6 +152,10 @@ ISR (TIMER0_COMPA_vect)
   PINC = _BV(PORTC1); // Toggle output
 }
 
+uint8_t BCDToDec(const uint8_t bcd)
+{
+  return 10 * (bcd >> 4) + (bcd & 0x0f);
+}
 const uint8_t PROGMEM dpm[] =
 {
   0x31, // jan
@@ -170,8 +174,9 @@ const uint8_t PROGMEM dpm[] =
 
 uint8_t GetDaysPerMonth()
 {
-  uint8_t days = pgm_read_byte(dpm + TheDateTime.month-1);
-  if (TheDateTime.month == 2 && (TheDateTime.year %4 == 0))
+  uint8_t days = pgm_read_byte(dpm + BCDToDec(TheDateTime.month) -1);
+  const uint8_t year = BCDToDec(TheDateTime.year);
+  if (TheDateTime.month == 2 && (year %4 == 0))
     days++; // February on a leap year
   
   return days;
@@ -179,10 +184,6 @@ uint8_t GetDaysPerMonth()
 
 const uint8_t PROGMEM dowTable[] = { 0,3,2,5,0,3,5,1,4,6,2,4 };
 
-uint8_t BCDToDec(const uint8_t bcd)
-{
-  return 10 * (bcd >> 4) + (bcd & 0x0f);
-}
 void UpdateDOW()
 {
   uint8_t year = BCDToDec(TheDateTime.year);
@@ -194,19 +195,20 @@ void UpdateDOW()
   TheDateTime.wday = ((year + year / 4 /* -y/100 + y / 400 */ + pgm_read_byte(dowTable + month -1) + day) % 7) + 1;
 }
 
-void UpdateDST()
+_Bool DetermineDST()
 {  
   // Initialize DST. 
+  _Bool dstActive;
   
   if (TheDateTime.month < 3 || TheDateTime.month > 0x10 || (TheDateTime.month == 3 && TheDateTime.day < 0x25))
   {
     // Before march 25th (Earliest possible date of DST changeover) or past october: DST not active
-    TheGlobalSettings.dstActive = 0;
+    dstActive = 0;
   }
   else if ((TheDateTime.month > 3 && TheDateTime.month < 0x10) || (TheDateTime.month == 0x10 && TheDateTime.day < 0x25))
   {
     // Between April 1st and october 25th (Earliest possible date of DST changeover): DST active
-    TheGlobalSettings.dstActive = 1;
+    dstActive = 1;
   }
   else 
   {
@@ -236,7 +238,7 @@ void UpdateDST()
     
     int8_t dst_day = 32 - dow_25;
     
-    TheGlobalSettings.dstActive = (TheDateTime.month == 0x10);
+    dstActive = (TheDateTime.month == 0x10);
     
     if (day > dst_day || (day == dst_day && TheDateTime.hour > 2))
     {
@@ -244,9 +246,10 @@ void UpdateDST()
       
       // This assumes that whenever the time is set on the DST adjustment day in the
       // fall, and it is after 2 AM that DST has been adjusted for already. 
-      TheGlobalSettings.dstActive = !TheGlobalSettings.dstActive;
+      dstActive = !dstActive;
     }
   }
+  return dstActive;
 }
 
 _Bool IsAlarmScheduled(struct AlarmSetting *alarm)
@@ -349,6 +352,23 @@ void RadioOff()
   TheSleepTime = 0;
 }
 
+void AddOneBCD(uint8_t *value)
+{
+  (*value)++;
+  
+  if ((*value & 0x0f) == 0x0a)
+    *value += 6;
+}
+
+void SubtractOneBCD(uint8_t *value)
+{
+  (*value)--;
+  if ((*value & 0x0f) == 0x0f)
+  {
+    *value -= 6;
+  }
+}
+
 void HandleEditUp(const uint8_t editMode, uint8_t *const editDigit, const uint8_t editMaxValue)
 {
   switch(editMode & EDIT_MODE_MASK)
@@ -379,11 +399,8 @@ void HandleEditUp(const uint8_t editMode, uint8_t *const editDigit, const uint8_
     }
     case EDIT_MODE_NUMBER:
     {
-      (*editDigit)++;
-      if ((*editDigit & 0x0f) == 0x0a)
-      {
-	*editDigit += 6; 
-      }
+      if (*editDigit < editMaxValue)
+	AddOneBCD(editDigit);
       break;
     }
   }
@@ -424,13 +441,7 @@ void HandleEditDown(const uint8_t editMode, uint8_t *const editDigit, const uint
     case EDIT_MODE_NUMBER:
     {
       if (*editDigit > 0)
-      {
-	(*editDigit)--;
-	if ((*editDigit & 0x0f) == 0x0f)
-	{
-	  *editDigit -= 6; 
-	}
-      }
+	SubtractOneBCD(editDigit);
       break;
     }
   }
@@ -492,6 +503,7 @@ void HandleCycleTime(uint8_t *time)
     *time = 0;
 }
 
+
 int main(void)
 {
   // Enable output on PORT C2 (amplifier control) and C1 (beeper)
@@ -523,8 +535,61 @@ int main(void)
     TheGlobalSettings.brightness = 3; // Default brightness.
     UpdateDOW(); // Don't assume the DOW is valid
     Write_DS1307_DateTime(); // This will reset the seconds divider, but that's acceptable as this is not expected to be called on a valid set clock anyway..
-    UpdateDST(); // Seed the DST state.    
+    TheGlobalSettings.dstActive = DetermineDST(); // Seed the DST state.    
     WriteGlobalSettings();
+  }
+  else
+  {
+    // Settings valid, see if DST rolled over while running on standby. 
+    _Bool currentDST =  DetermineDST();
+    if (currentDST != TheGlobalSettings.dstActive)
+    {
+      // Retro-actively apply DST
+      
+      if (currentDST)
+      {
+	// Go to DST (add one hour)
+	AddOneBCD(&TheDateTime.hour);
+	if (TheDateTime.hour == 0x24)
+	{
+	  TheDateTime.hour = 0;
+	  AddOneBCD(&TheDateTime.day);
+	  if (TheDateTime.day > GetDaysPerMonth())
+	  {
+	    TheDateTime.day = 1;
+	    AddOneBCD(&TheDateTime.month);
+	    if (TheDateTime.month == 0x13)
+	    {
+	      TheDateTime.month = 0;
+	      AddOneBCD(&TheDateTime.year);
+	    }
+	  }
+	}
+      }
+      else
+      {
+	// Go to normal time (subtract one hour)
+	SubtractOneBCD(&TheDateTime.hour);
+	if (TheDateTime.hour > 0x23) // Roll-over
+	{
+	  TheDateTime.hour = 0x23;
+	  SubtractOneBCD(&TheDateTime.day);
+	  if (TheDateTime.day == 0)
+	  {
+	    SubtractOneBCD(&TheDateTime.month);
+	    if (TheDateTime.month == 0)
+	      TheDateTime.month = 0x12;
+	      
+	    SubtractOneBCD(&TheDateTime.year);
+	    TheDateTime.day = GetDaysPerMonth();
+	  }
+	}
+      }
+      
+      TheGlobalSettings.dstActive = currentDST;
+      Write_DS1307_DateTime(); // This will reset the seconds divider, but that's acceptable as this is not expected to be called very often..	    
+      WriteGlobalSettings();
+    }
   }
 
   SetBrightness(TheGlobalSettings.brightness);
@@ -985,7 +1050,7 @@ int main(void)
 	  {
 	    // Done setting time
 	    Write_DS1307_DateTime();
-	    UpdateDST();
+	    TheGlobalSettings.dstActive = DetermineDST();
 	    writeSettingTimeout = 5;
 	    newDeviceMode = modeShowTime;
 	  }
