@@ -65,6 +65,7 @@ enum clockMode
   modeAdjustHoursOnes,
   modeAdjustMinsTens,
   modeAdjustMinsOnes,
+  modeAdjustSecs,
   modeAdjustHoursTens_Alarm,
   modeAdjustHoursOnes_Alarm,
   modeAdjustMinsTens_Alarm,
@@ -620,9 +621,14 @@ int main(void)
   uint8_t editMaxValue = 0x99;
   uint8_t modeTimeout = 0; // seconds
   uint8_t writeSettingTimeout = 0; // seconds
-  
-  _Bool timePollAllowed = 1;
-  
+
+  enum 
+  {
+     timePollNormal = 0,  
+     timePoll_TimeOnly = 1,
+     timePoll_SecondsOnly = 2
+   } timePollMode = timePollNormal;
+   
   sei(); // Enable interrupts. This will immediately trigger a port change interrupt; sink these events.
   
   struct AlarmSetting alarmBeingModified;
@@ -660,129 +666,141 @@ int main(void)
 	 newDeviceMode = modeShowTime;
       }
     
-      if (timePollAllowed)
+      switch(timePollMode)
       {
-	Read_DS1307_DateTime();
-	updateScreen = 1;
-	
-	// See if hours rolled over and it is a sunday
-	if (ThePreviousDateTime.min > TheDateTime.min && TheDateTime.day >= 0x25 && TheDateTime.wday == 7)
-	{
-	  // See if DST must be adjusted: Spring
-	  if (TheDateTime.hour == 2 && TheDateTime.month == 3 && !TheGlobalSettings.dstActive)
-	  {
-	    // Yup.
-	    TheGlobalSettings.dstActive = 1;
-	    TheDateTime.hour = 3;
-	    Write_DS1307_HoursOnly();
-	    writeSettingTimeout = 5;
-	  }
-	  // else see if DST must be adjusted: Fall
-	  else if (TheDateTime.hour == 3 && TheDateTime.month == 0x10 && TheGlobalSettings.dstActive)
-	  {
-	    // Yup
-	    TheGlobalSettings.dstActive = 0;
-	    TheDateTime.hour = 2;
-	    Write_DS1307_HoursOnly();
-	    writeSettingTimeout = 5;
-	  }
-	}
-	
-	// See if alarms must timeout
-	if (ThePreviousDateTime.sec > TheDateTime.sec)
-	{
-	  // Second rollover.
-	  if (alarm1Timeout)
-	  {
-	    alarm1Timeout--;
-	    if (!alarm1Timeout)
-	      SilenceAlarm(&TheGlobalSettings.alarm1);
-	  }
+	case timePollNormal:
+        {
+	  Read_DS1307_DateTime();
+	  updateScreen = 1;
 	  
-	  if (alarm2Timeout)
+	  // See if hours rolled over and it is a sunday
+	  if (ThePreviousDateTime.min > TheDateTime.min && TheDateTime.day >= 0x25 && TheDateTime.wday == 7)
 	  {
-	    alarm2Timeout--;
-	    if (!alarm2Timeout)
-	      SilenceAlarm(&TheGlobalSettings.alarm2);
-	  }
-	  
-	  if (TheSleepTime && deviceMode != modeAdjustSleep)
-	  {
-	    TheSleepTime--;
-	    if (TheSleepTime == 0)
+	    // See if DST must be adjusted: Spring
+	    if (TheDateTime.hour == 2 && TheDateTime.month == 3 && !TheGlobalSettings.dstActive)
 	    {
-	      RadioOff();
-	      if (deviceMode == modeShowRadio || deviceMode == modeShowRadio_Volume)
-		newDeviceMode = modeShowTime;
+	      // Yup.
+	      TheGlobalSettings.dstActive = 1;
+	      TheDateTime.hour = 3;
+	      Write_DS1307_HoursOnly();
+	      writeSettingTimeout = 5;
+	    }
+	    // else see if DST must be adjusted: Fall
+	    else if (TheDateTime.hour == 3 && TheDateTime.month == 0x10 && TheGlobalSettings.dstActive)
+	    {
+	      // Yup
+	      TheGlobalSettings.dstActive = 0;
+	      TheDateTime.hour = 2;
+	      Write_DS1307_HoursOnly();
+	      writeSettingTimeout = 5;
 	    }
 	  }
 	  
-	  if (napTimeout)
+	  // See if alarms must timeout
+	  if (ThePreviousDateTime.sec > TheDateTime.sec)
 	  {
-	    napTimeout--;
-	    if (!napTimeout)
+	    // Second rollover.
+	    if (alarm1Timeout)
 	    {
-	      BeepOff();
+	      alarm1Timeout--;
+	      if (!alarm1Timeout)
+		SilenceAlarm(&TheGlobalSettings.alarm1);
 	    }
-	  }
-	  
-	  // See if nap timer must fire
-	  if (TheNapTime && deviceMode != modeAdjustNap)
-	  {
-	    TheNapTime--;
-	    if (TheNapTime == 0)
+	    
+	    if (alarm2Timeout)
 	    {
-	      BeepOn();
-	      napTimeout = ALARM_BEEP_TIMEOUT;
+	      alarm2Timeout--;
+	      if (!alarm2Timeout)
+		SilenceAlarm(&TheGlobalSettings.alarm2);
+	    }
+	    
+	    if (TheSleepTime && deviceMode != modeAdjustSleep)
+	    {
+	      TheSleepTime--;
+	      if (TheSleepTime == 0)
+	      {
+		RadioOff();
+		if (deviceMode == modeShowRadio || deviceMode == modeShowRadio_Volume)
+		  newDeviceMode = modeShowTime;
+	      }
+	    }
+	    
+	    if (napTimeout)
+	    {
+	      napTimeout--;
+	      if (!napTimeout)
+	      {
+		BeepOff();
+	      }
+	    }
+	    
+	    // See if nap timer must fire
+	    if (TheNapTime && deviceMode != modeAdjustNap)
+	    {
+	      TheNapTime--;
+	      if (TheNapTime == 0)
+	      {
+		BeepOn();
+		napTimeout = ALARM_BEEP_TIMEOUT;
+		newDeviceMode = modeAlarmFiring;
+	      }
+	    }
+	    
+	    // See if alarms must fire.
+	    if (alarm1Scheduled && AlarmTriggered(&TheGlobalSettings.alarm1))
+	    {
+	      if (TheGlobalSettings.alarm1.flags & ALARM_TYPE_RADIO)
+	      {
+		RadioOn();
+		alarm1Timeout = ALARM_RADIO_TIMEOUT;
+	      }
+	      else
+	      {
+		BeepOn();
+		alarm1Timeout = ALARM_BEEP_TIMEOUT;
+	      }
+	      
+	      newDeviceMode = modeAlarmFiring;
+	    }
+	    
+	    if ( alarm2Scheduled && AlarmTriggered(&TheGlobalSettings.alarm2))
+	    {
+	      if (TheGlobalSettings.alarm2.flags & ALARM_TYPE_RADIO)
+	      {
+		RadioOn();
+		alarm2Timeout = ALARM_RADIO_TIMEOUT;
+	      }
+	      else
+	      {
+		BeepOn();
+		alarm2Timeout = ALARM_BEEP_TIMEOUT;
+	      }
+	      
 	      newDeviceMode = modeAlarmFiring;
 	    }
 	  }
 	  
-	  // See if alarms must fire.
-	  if (alarm1Scheduled && AlarmTriggered(&TheGlobalSettings.alarm1))
-	  {
-	    if (TheGlobalSettings.alarm1.flags & ALARM_TYPE_RADIO)
-	    {
-	      RadioOn();
-	      alarm1Timeout = ALARM_RADIO_TIMEOUT;
-	    }
-	    else
-	    {
-	      BeepOn();
-	      alarm1Timeout = ALARM_BEEP_TIMEOUT;
-	    }
-	    
-	    newDeviceMode = modeAlarmFiring;
-	  }
+	  ThePreviousDateTime = TheDateTime;
 	  
-	  if ( alarm2Scheduled && AlarmTriggered(&TheGlobalSettings.alarm2))
+	  if (deviceMode < modeShowAlarm1)
 	  {
-	    if (TheGlobalSettings.alarm2.flags & ALARM_TYPE_RADIO)
-	    {
-	      RadioOn();
-	      alarm2Timeout = ALARM_RADIO_TIMEOUT;
-	    }
-	    else
-	    {
-	      BeepOn();
-	      alarm2Timeout = ALARM_BEEP_TIMEOUT;
-	    }
+	    alarm1Scheduled = IsAlarmScheduled(&TheGlobalSettings.alarm1);
+	    alarm2Scheduled = IsAlarmScheduled(&TheGlobalSettings.alarm2);
 	    
-	    newDeviceMode = modeAlarmFiring;
+	    Renderer_SetLed(TheNapTime > 0 ? LED_ON : LED_OFF, alarm1Scheduled ? LED_ON : LED_OFF,  alarm2Scheduled ? LED_ON : LED_OFF, TheSleepTime > 0 ? LED_ON : TheSleepTime > 0 ? LED_ON : LED_OFF);
 	  }
-        }	
-	ThePreviousDateTime = TheDateTime;
-	
-	if (deviceMode < modeShowAlarm1)
-	{
-	  alarm1Scheduled = IsAlarmScheduled(&TheGlobalSettings.alarm1);
-	  alarm2Scheduled = IsAlarmScheduled(&TheGlobalSettings.alarm2);
-	  
-	  Renderer_SetLed(TheNapTime > 0 ? LED_ON : LED_OFF, alarm1Scheduled ? LED_ON : LED_OFF,  alarm2Scheduled ? LED_ON : LED_OFF, TheSleepTime > 0 ? LED_ON : TheSleepTime > 0 ? LED_ON : LED_OFF);
+	  break;
 	}
+	case timePoll_TimeOnly:
+	  Read_DS1307_TimeOnly();
+	  break;
+	case timePoll_SecondsOnly:
+	  Read_DS1307_SecondsOnly();
+	  break;
       }
     }
     
+	
     // Handle keypresses
     switch ( deviceMode )
     {
@@ -1042,18 +1060,7 @@ int main(void)
 	  newDeviceMode = modeShowTime;
 	} else if (longPressEvent.shortPress & BUTTON1_CLICK)
 	{
-	  if (deviceMode < modeAdjustMinsOnes)
-	  {
-	    newDeviceMode++;
-	  }
-	  else
-	  {
-	    // Done setting time
-	    Write_DS1307_DateTime();
-	    TheGlobalSettings.dstActive = DetermineDST();
-	    writeSettingTimeout = 5;
-	    newDeviceMode = modeShowTime;
-	  }
+	  newDeviceMode++;
 	} else if (eventToHandle & BUTTON3_CLICK)
 	{
 	  updateScreen = 1;
@@ -1070,6 +1077,26 @@ int main(void)
 	  {
 	    UpdateDOW();   
 	  }
+	}
+	break;
+      }
+      case modeAdjustSecs:
+      {
+	if (longPressEvent.longPress & BUTTON1_CLICK)
+	{
+	  // Abort setting time
+	  newDeviceMode = modeShowTime;
+	} else if (longPressEvent.shortPress & BUTTON1_CLICK)
+	{
+	  // Done setting time
+	  Write_DS1307_NoSeconds();
+	  TheGlobalSettings.dstActive = DetermineDST();
+	  writeSettingTimeout = 5;
+	  newDeviceMode = (radioIsOn ? modeShowRadio : modeShowTime );
+	} else if (eventToHandle & (BUTTON3_CLICK | BUTTON4_CLICK))
+	{
+	  Reset_DS1307_Seconds();
+	  updateScreen = 1;
 	}
 	break;
       }
@@ -1192,7 +1219,7 @@ int main(void)
 	  modeTimeout = 255;
 	  mainMode = MAIN_MODE_DATE;
           secMode = SECONDARY_MODE_YEAR;
-	  timePollAllowed = 0;
+	  timePollMode = timePoll_TimeOnly;
 	  
           Renderer_SetFlashMask(0x2); 
           editDigit = &TheDateTime.year;
@@ -1225,6 +1252,7 @@ int main(void)
           break;
         case modeAdjustHoursTens:
 	  modeTimeout = 255;
+	  timePollMode = timePoll_SecondsOnly;
 	  mainMode = MAIN_MODE_TIME;
           secMode = SECONDARY_MODE_SEC;
           editMode = EDIT_MODE_TENS;
@@ -1249,10 +1277,15 @@ int main(void)
           Renderer_SetFlashMask(0x10); 
           editMode = EDIT_MODE_ONES;
           break;
+	case modeAdjustSecs:
+	  modeTimeout = 255;
+	  editMode = 0;
+	  Renderer_SetFlashMask(0x06); 
+	  break;
         case modeShowTime:
 	  modeTimeout = 0;
 	  Renderer_SetFlashMask(0);
-	  timePollAllowed = 1;
+	  timePollMode = timePollNormal;
 	  editMode = 0;	  
 	  secMode = SECONDARY_MODE_SEC;
 	  mainMode = MAIN_MODE_TIME;
@@ -1265,14 +1298,14 @@ int main(void)
 	  secMode = SECONDARY_MODE_YEAR;
 	  break;
 	case modeShowRadio:
-	  timePollAllowed = 1;
+	  timePollMode = timePollNormal;
 	  modeTimeout = 0;
 	  mainMode = MAIN_MODE_TIME;
 	  secMode = SECONDARY_MODE_RADIO;
 	  Renderer_Update_Secondary();
 	  break;
 	case modeShowRadio_Volume:
-	  timePollAllowed = 1;
+	  timePollMode = timePollNormal;
 	  modeTimeout = 0;
 	  mainMode = MAIN_MODE_TIME;
 	  secMode = SECONDARY_MODE_VOLUME;
@@ -1281,7 +1314,7 @@ int main(void)
 	case modeAlarmFiring:
 	  modeTimeout = 0;
 	  Renderer_SetFlashMask(0xff);
-	  timePollAllowed = 1;
+	  timePollMode = timePollNormal;
 	  editMode = 0;	  
 	  secMode = SECONDARY_MODE_SEC;
 	  mainMode = MAIN_MODE_TIME;
@@ -1289,7 +1322,7 @@ int main(void)
 	case modeShowAlarm1:
 	{
 	  Renderer_SetFlashMask(0x00); 
-	  timePollAllowed = 1;
+	  timePollMode = timePollNormal;
 	  modeTimeout = SHOW_ALARM_TIMEOUT;
 	  mainMode = MAIN_MODE_ALARM;
 	  secMode = SECONDARY_MODE_ALARM;
@@ -1300,7 +1333,7 @@ int main(void)
 	}
 	case modeShowAlarm2:
 	  Renderer_SetFlashMask(0x00); 
-	  timePollAllowed = 1;
+	  timePollMode = timePollNormal;
 	  modeTimeout = SHOW_ALARM_TIMEOUT;
 	  mainMode = MAIN_MODE_ALARM;
 	  secMode = SECONDARY_MODE_ALARM;

@@ -10,9 +10,32 @@ void Read_DS1307_DateTime()
   Read_I2C_Regs(DS1307_ADDR, 0, 7, (uint8_t *)&TheDateTime);
 }
 
+void Read_DS1307_TimeOnly()
+{
+  // Read the first 3 registers, don't read the date
+  Read_I2C_Regs(DS1307_ADDR, 0, 3, (uint8_t *)&TheDateTime);
+}
+
+void Read_DS1307_SecondsOnly()
+{
+  // Read the first register (seconds) only
+  Read_I2C_Regs(DS1307_ADDR, 0, 1, (uint8_t *)&TheDateTime);
+}
+
+void Reset_DS1307_Seconds()
+{
+  TheDateTime.sec = 0;
+  Write_I2C_Regs(DS1307_ADDR, 0, 1, (uint8_t *)&TheDateTime);
+}
+
+void Write_DS1307_NoSeconds()
+{
+  Write_I2C_Regs(DS1307_ADDR, 0, 1, (uint8_t *)&TheDateTime);
+}
+
 void Write_DS1307_DateTime()
 {
-  Write_I2C_Regs(DS1307_ADDR, 0,7,(uint8_t *)&TheDateTime); // Re-set time and date in same packet to avoid roll-over!
+  Write_I2C_Regs(DS1307_ADDR, 0,6,&TheDateTime.min); // Re-set time and date in same packet to avoid roll-over, but ignore seconds to avoid resetting the counter.
 }
 
 void Write_DS1307_HoursOnly()
