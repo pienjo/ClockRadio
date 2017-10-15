@@ -145,7 +145,7 @@ uint8_t SI4702_regs[32];
 #define READ_CHANNEL_L 0x17
   // ReadChannel[7:0]
 
-void Write_SI4702();
+_Bool Write_SI4702();
 void SI4702_SetFrequency_intern(uint16_t frequency) // Frequency in .1 MHz 
 {
   if ((SI4702_regs[SYSCONFIG2_L] & BAND_BITS) != BAND_US_EU)
@@ -243,10 +243,11 @@ inline void I2CWait()
 // start at address 0x0A, then auto-increment to 0x0F, and then
 // wrap around to address 0
 
-void Read_SI4702()
+_Bool Read_SI4702()
 {
   uint8_t currentReg = 0x14; // 2 * 0x0a
-
+  _Bool success = 0;
+  
   // Send START
   TWCR = _BV(TWINT)| _BV(TWSTA) | _BV(TWEN);
 
@@ -282,12 +283,19 @@ void Read_SI4702()
   I2CWait();
 
   SI4702_regs[currentReg++] = TWDR;
-
+  
+  success = 1;
+  
+  goto stop;
+  
 error:
+stop:
   TWCR = _BV(TWINT) | _BV(TWSTO) | _BV(TWEN); // Stop    
   // Wait on STOP to clear
   while ((TWCR & _BV(TWSTO)))
     ;
+  
+  return success;
 }
 
 // Writing out the SI4072 registers is even more weird. According to the documentation,
@@ -295,17 +303,20 @@ error:
 // then wraps around to 0. However, address 8 and 9 may not be written...
 // Basicly, this means only addresses 0x2 through 0x7 are available for writing
 
-void Write_SI4702()
+_Bool Write_SI4702()
 {
   // Can use Write_I2C_Regs here, by supplying the MSB of register 2 as "register address"
-  Write_I2C_Regs(SI4702_ADDR, SI4702_regs[4], 11, SI4702_regs + 5); // Send MSB of 2 as "register adddress" and 11 remaining data bytes.
+  return Write_I2C_Regs(SI4702_ADDR, SI4702_regs[4], 11, SI4702_regs + 5); // Send MSB of 2 as "register adddress" and 11 remaining data bytes.
 }
 
 void Init_SI4702()
 {
   // Disable I2C module
+  _Bool i2cWasEnabled;
+  
+restart:
 
-  _Bool i2cWasEnabled = false;
+  i2cWasEnabled = false;
   if (TWCR & _BV(TWEN))
   {
     i2cWasEnabled = true;
@@ -335,13 +346,18 @@ void Init_SI4702()
   }
   
   // Read current registers
-  Read_SI4702();
+  if (!Read_SI4702())
+    goto restart;
+    
   // Enable the oscillator
   SI4702_regs[TEST1_H] |= XOSCEN;
   // Writeout
-  Write_SI4702();
+  if (!Write_SI4702())
+    goto restart;
 
   _delay_ms(125); // Allow oscillator to settle
+  if (!Read_SI4702())
+    goto restart;
 }
 
 void SI4702_PowerOn()

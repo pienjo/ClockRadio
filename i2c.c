@@ -7,10 +7,10 @@ inline void I2CWait()
     ; // Wait
 }
 
-void Write_I2C_Regs(uint8_t addr, uint8_t reg, uint8_t amount, uint8_t *ptr)
+_Bool Write_I2C_Regs(uint8_t addr, uint8_t reg, uint8_t amount, uint8_t *ptr)
 {
   if (amount == 0)
-    return;
+    return 1;
 
   // Send START
   TWCR = _BV(TWINT)| _BV(TWSTA) | _BV(TWEN);
@@ -18,8 +18,10 @@ void Write_I2C_Regs(uint8_t addr, uint8_t reg, uint8_t amount, uint8_t *ptr)
   I2CWait();
 
   if ((TWSR & 0xF8) != 0x08)
-    return;
+    return 0;
 
+  _Bool success = 0;
+  
   TWDR= addr & 0xfe;  // Slave address, write
 
   TWCR = _BV(TWEN) | _BV(TWINT);
@@ -45,18 +47,20 @@ void Write_I2C_Regs(uint8_t addr, uint8_t reg, uint8_t amount, uint8_t *ptr)
     if((TWSR & 0xf8) != 0x28)
       break;
   }
-
+  
+  success = 1;
 error:
   TWCR = _BV(TWINT) | _BV(TWSTO) | _BV(TWEN); // Stop    
   // Wait on STOP to clear
   while ((TWCR & _BV(TWSTO)))
     ;
+  return success;
 }
 
-void Read_I2C_Regs(uint8_t addr, uint8_t reg, uint8_t amount, uint8_t *ptr)
+_Bool Read_I2C_Regs(uint8_t addr, uint8_t reg, uint8_t amount, uint8_t *ptr)
 {
   if (amount == 0)
-    return;
+    return 0;
 
   // Send START
   TWCR = _BV(TWINT)| _BV(TWSTA) | _BV(TWEN);
@@ -64,8 +68,10 @@ void Read_I2C_Regs(uint8_t addr, uint8_t reg, uint8_t amount, uint8_t *ptr)
   I2CWait();
 
   if ((TWSR & 0xF8) != 0x08)
-    return;
+    return 0;
 
+  _Bool success = 0;
+  
   TWDR=addr & 0xfe;  // Slave address, write
   TWCR = _BV(TWEN) | _BV(TWINT);
   I2CWait();
@@ -112,12 +118,13 @@ void Read_I2C_Regs(uint8_t addr, uint8_t reg, uint8_t amount, uint8_t *ptr)
   I2CWait();
   *ptr++ = TWDR;
 
+  success = 1;
 error:
   TWCR = _BV(TWINT) | _BV(TWSTO) | _BV(TWEN); // Stop    
   // Wait on STOP to clear
   while ((TWCR & _BV(TWSTO)))
     ;
-
+  return success = 0;
 }
 
 void Init_I2C()
