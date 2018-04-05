@@ -39,7 +39,6 @@ struct GlobalSettings
   uint8_t              brightness;
   struct AlarmSetting  alarm1, 
                        alarm2;
-  _Bool                dstActive;
 };
 
 extern struct GlobalSettings TheGlobalSettings;

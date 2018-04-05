@@ -15,11 +15,6 @@ void Write_DS1307_DateTime()
   Write_I2C_Regs(DS1307_ADDR, 0,7,(uint8_t *)&TheDateTime); // Re-set time and date in same packet to avoid roll-over!
 }
 
-void Write_DS1307_HoursOnly()
-{
-  Write_I2C_Regs(DS1307_ADDR, 2,1,&TheDateTime.hour); // Don't touch the seconds register!
-}
-
 // Ensures the DS1307 is correctly configured:
 // * Oscillator enabled
 // * Enable 24H mode

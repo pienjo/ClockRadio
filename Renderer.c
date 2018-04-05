@@ -101,9 +101,6 @@ static void __privateRender(const uint8_t secondaryMode)
     case SECONDARY_MODE_SEC:
       segmentDigits[DIGIT_2] = pgm_read_byte(BCDToSegment + (TheDateTime.sec >> 4));
       segmentDigits[DIGIT_3] = pgm_read_byte(BCDToSegment + (TheDateTime.sec & 0xf));
-      
-      // (ab)use the decimal dot of digit 4 to indicate whether DST is active
-      segmentDigits[DIGIT_4] = (TheGlobalSettings.dstActive ? SEG_DP : 0);
       break;
     case SECONDARY_MODE_YEAR:
       segmentDigits[DIGIT_1] = pgm_read_byte(BCDToSegment + 2);
