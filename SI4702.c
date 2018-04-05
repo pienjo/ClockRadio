@@ -99,7 +99,7 @@ uint8_t SI4702_regs[32];
   
   #define VOLEXT 0x01      // extended volume rage (output attenuates by 30 dB)
 
-#define SYSCONFIG3_L   0x0d
+#define Sa064cac5658c9d9727d83def8bfcdf26693db3bbYSCONFIG3_L   0x0d
   #define SKSNR(x)  (x << 4) // Seek SNR threshold (0 = most stops, 7 = fewest stops)
   #define SKSNR_BITS 0xf0
   #define SKCNT(x)  (x)
@@ -232,7 +232,7 @@ uint8_t SI4702_GetVolume()
 }
 
 
-inline void I2CWait()
+static inline void I2CWait()
 {
   while (!(TWCR & _BV(TWINT)))
     ; // Wait

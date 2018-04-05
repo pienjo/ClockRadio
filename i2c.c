@@ -1,7 +1,7 @@
 #include "i2c.h"
 #include <avr/io.h>
 
-inline void I2CWait()
+static inline void I2CWait()
 {
   while (!(TWCR & _BV(TWINT)))
     ; // Wait
