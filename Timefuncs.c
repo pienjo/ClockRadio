@@ -22,6 +22,7 @@ const uint8_t PROGMEM dpm[] =
 uint8_t GetDaysPerMonth(const uint8_t Month, const uint8_t Year)
 {
   uint8_t days = pgm_read_byte(dpm + Month-1);
+  //uint8_t year_dec = 10 * (year >> 4) + (year & 0xf);
   if (Month == 2 && (Year %4 == 0))
     days++; // February on a leap year
   
@@ -32,10 +33,10 @@ const uint8_t PROGMEM dowTable[] = { 0,3,2,5,0,3,5,1,4,6,2,4 };
 
 uint8_t GetDayOfWeek(uint8_t Day, uint8_t Month, uint8_t year /* 20xx */) // 1 - monday
 {
-  year = year >> 4 | (year & 0xf); // Undo BCD
+  year = 10 * (year >> 4) +  (year & 0xf); // Undo BCD
   year -= ( Month < 3);
   
-  return  ((year + year / 4 /* -y/100 + y / 400 */ + pgm_read_byte(dowTable + Month -1) + Day) % 7) + 1;
+  return  ((year + year / 4 /* -y/100 + y / 400 */ + pgm_read_byte(dowTable + Month -1) + Day - 1) % 7) + 1;
 }
 
 static void NormalizeHours(struct DateTime *timestamp)
@@ -63,6 +64,8 @@ static void NormalizeHours(struct DateTime *timestamp)
     if (timestamp->month == 0)
     {
       timestamp->year--;
+      if ((timestamp->year & 0xf) == 0xf) 
+        timestamp->year -= 6;
       timestamp->month = 12;
     }
     
@@ -79,6 +82,8 @@ static void NormalizeHours(struct DateTime *timestamp)
     if (timestamp->month == 13)
     {
       timestamp->year ++;
+      if ((timestamp->year & 0xf) == 0xa) 
+        timestamp->year += 6;
       timestamp->month = 1;
     }
   }
