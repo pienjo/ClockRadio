@@ -1,7 +1,3 @@
-*.map
-*.hex
-*.lst
 font.c
 bitmap.h
 bitmap.c
-obj/*
