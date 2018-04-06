@@ -8,13 +8,13 @@
 #include "DS1307.h"
 #include "SI4702.h"
 #include "settings.h"
+#include "Timefuncs.h"
 
 #include "i2c.h"
 
 #include <avr/interrupt.h>
 #include <avr/sleep.h>
 #include <util/atomic.h>
-#include <avr/pgmspace.h>
 
 struct DateTime TheDateTime;
 struct DateTime ThePreviousDateTime;
@@ -152,39 +152,6 @@ ISR (TIMER0_COMPA_vect)
   PINC = _BV(PORTC1); // Toggle output
 }
 
-const uint8_t PROGMEM dpm[] =
-{
-  0x31, // jan
-  0x28, // feb
-  0x31, // mar
-  0x30, // apr
-  0x31, // may
-  0x30, // jun
-  0x31, // jul
-  0x31, // aug
-  0x30, // sep
-  0x31, // oct
-  0x30, // nov
-  0x31, // dec;
-};
-
-uint8_t GetDaysPerMonth()
-{
-  uint8_t days = pgm_read_byte(dpm + TheDateTime.month-1);
-  if (TheDateTime.month == 2 && (TheDateTime.year %4 == 0))
-    days++; // February on a leap year
-  
-  return days;
-}
-
-const uint8_t PROGMEM dowTable[] = { 0,3,2,5,0,3,5,1,4,6,2,4 };
-void UpdateDOW()
-{
-  uint8_t year = TheDateTime.year >> 4 | (TheDateTime.year & 0xf); // Undo BCD
-  year -= ( TheDateTime.month < 3);
-  
-  TheDateTime.wday = ((year + year / 4 /* -y/100 + y / 400 */ + pgm_read_byte(dowTable + TheDateTime.month -1) + TheDateTime.day) % 7) + 1;
-}
 
 _Bool IsAlarmScheduled(struct AlarmSetting *alarm)
 {
@@ -904,7 +871,7 @@ int main(void)
 	  HandleEditDown(editMode, editDigit, editMaxValue);
 	  if (deviceMode < modeAdjustHoursTens)
 	  {
-	    UpdateDOW();   
+	    TheDateTime.wday = GetDayOfWeek(TheDateTime.day, TheDateTime.month, TheDateTime.year /* 20xx */);
 	  }
 	} else if (eventToHandle & BUTTON4_CLICK)
 	{
@@ -912,7 +879,7 @@ int main(void)
 	  HandleEditUp(editMode, editDigit, editMaxValue);
 	  if (deviceMode < modeAdjustHoursTens)
 	  {
-	    UpdateDOW();   
+	     TheDateTime.wday = GetDayOfWeek(TheDateTime.day, TheDateTime.month, TheDateTime.year /* 20xx */);
 	  }
 	}
 	break;
@@ -1058,7 +1025,7 @@ int main(void)
         case modeAdjustDayTens:
 	  modeTimeout = 255;
           editDigit = &TheDateTime.day;
-          editMaxValue = GetDaysPerMonth();
+          editMaxValue = GetDaysPerMonth(TheDateTime.month, TheDateTime.year);
           editMode = EDIT_MODE_TENS | EDIT_MODE_ONEBASE;
           Renderer_SetFlashMask(0x80); 
           break;
