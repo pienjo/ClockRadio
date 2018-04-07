@@ -152,6 +152,10 @@ ISR (TIMER0_COMPA_vect)
   PINC = _BV(PORTC1); // Toggle output
 }
 
+static inline _Bool IsPastAlarmTime(const struct AlarmSetting *alarm, const struct DateTime *timestamp)
+{
+  return (timestamp->hour > alarm->hour) || (timestamp->hour == alarm->hour && timestamp->min >= alarm->min);
+}
 
 _Bool IsAlarmScheduled(struct AlarmSetting *alarm)
 {
@@ -172,15 +176,15 @@ _Bool IsAlarmScheduled(struct AlarmSetting *alarm)
   // See if next alarm time is today or tomorrow.
   uint8_t nextAlarmDay; // 0-based
   
-  if (TheDateTime.hour < alarm->hour || (TheDateTime.hour == alarm->hour && TheDateTime.min <= alarm->min))
-  {
-    // Alarm will trigger today
-    nextAlarmDay = TheDateTime.wday - 1; // 0-6
-  }
-  else
+  if (IsPastAlarmTime(alarm, &TheDateTime))
   {
     // Alarm will trigger tomorrow.
     nextAlarmDay = TheDateTime.wday;
+  }
+  else
+  {
+    // Alarm will trigger today
+    nextAlarmDay = TheDateTime.wday - 1; // 0-6
   }
     
   // Check if day matches
@@ -255,6 +259,8 @@ void RadioOff()
 
 void HandleEditUp(const uint8_t editMode, uint8_t *const editDigit, const uint8_t editMaxValue)
 {
+  if (!editDigit)
+    return;
   switch(editMode & EDIT_MODE_MASK)
   {
     case EDIT_MODE_ONES:
@@ -314,21 +320,12 @@ void SilenceAlarm(struct AlarmSetting *alarm)
   
 _Bool AlarmTriggered(struct AlarmSetting *alarm)
 {
-  uint16_t alarmMinOfDay = alarm->hour * 60 + alarm->min;
-  
-  uint16_t prevMinOfDay = ThePreviousDateTime.hour * 60 + ThePreviousDateTime.min;
-  
-  if (prevMinOfDay >= alarmMinOfDay)
+  if (IsPastAlarmTime(alarm, &ThePreviousDateTime))
     return 0; // already triggered
-    
-  uint16_t curMinOfDay = TheDateTime.hour * 60 + TheDateTime.min;
-  
-  if (curMinOfDay < prevMinOfDay)
-    curMinOfDay += 60*24;
-    
-  if (curMinOfDay < alarmMinOfDay)
-    return 0; // not yet triggered
-  
+
+  if (!IsPastAlarmTime(alarm, &TheDateTime) && ThePreviousDateTime.hour <= TheDateTime.hour)
+    return 0; // Alarm not yet triggered, and no roll-over
+
   if ((alarm->flags & ALARM_DAY_NEVER) == ALARM_DAY_NEVER)
   {
     // Turn off alarm on one-time alarms
@@ -695,7 +692,7 @@ int main(void)
 	{
 	  modeTimeout = SHOW_ALARM_TIMEOUT;
 	  TheGlobalSettings.alarm1.flags ^= ALARM_ACTIVE;
-	  Renderer_SetLed(TheNapTime > 0 ? LED_ON : LED_OFF, TheGlobalSettings.alarm1.flags & ALARM_ACTIVE ? LED_BLINK_LONG : LED_BLINK_SHORT, IsAlarmScheduled( &TheGlobalSettings.alarm2) ? LED_ON : LED_OFF, TheSleepTime > 0 ? LED_ON : LED_OFF);	
+	  Renderer_SetLed((TheNapTime > 0) ? LED_ON : LED_OFF, (TheGlobalSettings.alarm1.flags & ALARM_ACTIVE) ? LED_BLINK_LONG : LED_BLINK_SHORT, IsAlarmScheduled( &TheGlobalSettings.alarm2) ? LED_ON : LED_OFF, (TheSleepTime > 0) ? LED_ON : LED_OFF);	
 	}
 	
 	if ((eventToHandle & CLOCK_UPDATE) && (--modeTimeout == 0) )
@@ -724,7 +721,7 @@ int main(void)
 	{
 	  modeTimeout = SHOW_ALARM_TIMEOUT;
 	  TheGlobalSettings.alarm2.flags ^= ALARM_ACTIVE;
-	  Renderer_SetLed(TheNapTime > 0 ? LED_ON : LED_OFF, IsAlarmScheduled( &TheGlobalSettings.alarm1) ? LED_ON : LED_OFF, TheGlobalSettings.alarm2.flags & ALARM_ACTIVE ? LED_BLINK_LONG : LED_BLINK_SHORT, TheSleepTime > 0 ? LED_ON : LED_OFF);
+	  Renderer_SetLed( (TheNapTime > 0 )? LED_ON : LED_OFF, IsAlarmScheduled( &TheGlobalSettings.alarm1) ? LED_ON : LED_OFF, (TheGlobalSettings.alarm2.flags & ALARM_ACTIVE )? LED_BLINK_LONG : LED_BLINK_SHORT, (TheSleepTime > 0) ? LED_ON : LED_OFF);
 	}
 	
 	if ((eventToHandle & CLOCK_UPDATE) && (--modeTimeout == 0) )
@@ -1056,7 +1053,7 @@ int main(void)
 	  mainMode = MAIN_MODE_ALARM;
 	  secMode = SECONDARY_MODE_ALARM;
 	  Renderer_SetAlarmStruct(&TheGlobalSettings.alarm1);
-	  Renderer_SetLed(TheNapTime > 0 ? LED_ON : LED_OFF, TheGlobalSettings.alarm1.flags & ALARM_ACTIVE ? LED_BLINK_LONG : LED_BLINK_SHORT, IsAlarmScheduled( &TheGlobalSettings.alarm2) ? LED_ON : LED_OFF, TheSleepTime > 0 ? LED_ON : LED_OFF);
+	  Renderer_SetLed((TheNapTime > 0 ) ? LED_ON : LED_OFF, (TheGlobalSettings.alarm1.flags & ALARM_ACTIVE) ? LED_BLINK_LONG : LED_BLINK_SHORT, IsAlarmScheduled( &TheGlobalSettings.alarm2) ? LED_ON : LED_OFF, (TheSleepTime > 0 ) ? LED_ON : LED_OFF);
 	  Renderer_Update_Secondary();
 	  break;
 	}
@@ -1067,7 +1064,7 @@ int main(void)
 	  mainMode = MAIN_MODE_ALARM;
 	  secMode = SECONDARY_MODE_ALARM;
 	  Renderer_SetAlarmStruct(&TheGlobalSettings.alarm2);
-	  Renderer_SetLed(TheNapTime > 0 ? LED_ON : LED_OFF, IsAlarmScheduled( &TheGlobalSettings.alarm1) ? LED_ON : LED_OFF, TheGlobalSettings.alarm2.flags & ALARM_ACTIVE ? LED_BLINK_LONG : LED_BLINK_SHORT, TheSleepTime > 0 ? LED_ON : LED_OFF);
+	  Renderer_SetLed((TheNapTime > 0 ) ? LED_ON : LED_OFF, IsAlarmScheduled( &TheGlobalSettings.alarm1) ? LED_ON : LED_OFF, (TheGlobalSettings.alarm2.flags & ALARM_ACTIVE) ? LED_BLINK_LONG : LED_BLINK_SHORT, (TheSleepTime > 0) ? LED_ON : LED_OFF);
 	  
 	  Renderer_Update_Secondary();
 	  break;

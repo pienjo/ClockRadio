@@ -170,7 +170,7 @@ void SI4702_SetFrequency_intern(uint16_t frequency) // Frequency in .1 MHz
 
 uint16_t SI4702_GetFrequency()
 {
-  if (! SI4702_regs[POWERCONFIG_L] & ENABLE )
+  if ((SI4702_regs[POWERCONFIG_L] & ENABLE) == 0 )
     return 0;
   
   uint16_t frequency = SI4702_regs[READ_CHANNEL_H] & READ_CHANNEL_H_BITS;

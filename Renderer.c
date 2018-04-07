@@ -235,7 +235,7 @@ static void __privateRender(const uint8_t secondaryMode)
 		  wday_mask = (i < 5) ? 3 : 0;
 		  break;
 		case ALARM_DAY_WEEKEND:
-		  wday_mask = (i >= 5 && i ) ? 3 : 0;
+		  wday_mask = (i >= 5 && i < 7 ) ? 3 : 0;
 		  break;
 	      }
 	    }
