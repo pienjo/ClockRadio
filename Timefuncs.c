@@ -1,4 +1,5 @@
 #include "Timefuncs.h"
+#include "BCDFuncs.h"
 #include "DateTime.h"
 #include <avr/pgmspace.h>
 #include <stdbool.h>
@@ -21,10 +22,10 @@ const uint8_t PROGMEM dpm[] =
 
 uint8_t GetDaysPerMonth(const uint8_t Month, const uint8_t Year)
 {
-  uint8_t days = pgm_read_byte(dpm + Month-1);
+  uint8_t days = pgm_read_byte(dpm + BCDToBin(Month) - 1);
   //uint8_t year_dec = 10 * (year >> 4) + (year & 0xf);
   if (Month == 2 && (Year %4 == 0))
-    days++; // February on a leap year
+    days++; // February on a leap year, no need to fix BCD.
   
   return days;
 }
@@ -33,43 +34,42 @@ const uint8_t PROGMEM dowTable[] = { 0,3,2,5,0,3,5,1,4,6,2,4 };
 
 uint8_t GetDayOfWeek(uint8_t Day, uint8_t Month, uint8_t year /* 20xx */) // 1 - monday
 {
-  year = 10 * (year >> 4) +  (year & 0xf); // Undo BCD
+  year = BCDToBin(year);
   year -= ( Month < 3);
   
-  return  ((year + year / 4 /* -y/100 + y / 400 */ + pgm_read_byte(dowTable + Month -1) + Day - 1) % 7) + 1;
+  return  ((year + year / 4 /* -y/100 + y / 400 */ + pgm_read_byte(dowTable + BCDToBin(Month) -1) + BCDToBin(Day) - 1) % 7) + 1;
 }
 
 static void NormalizeHours(struct DateTime *timestamp)
 {
-  if (timestamp->hour >= 0 && timestamp->hour < 24)
+  if (timestamp->hour < 0x24)
     return; // Nothing to do.
   
-  while((int8_t) timestamp->hour < 0)
+  if (timestamp->hour > 0x50)
   {
-    timestamp->day--;
+    // Underflow
+    timestamp->day = BCDSub(timestamp->day, 0x1); 
     timestamp->wday = (timestamp->wday - 1) % 7;
-    timestamp->hour += 24;
+    timestamp->hour = BCDAdd(timestamp->hour, 0x24);
   }  
   
-  while(timestamp->hour >= 24)
+  if(timestamp->hour >= 0x24)
   {
-    timestamp->day--;
+    timestamp->day = BCDAdd(timestamp->day, 0x01);
     timestamp->wday = (timestamp->wday + 1) % 7;
-    timestamp->hour -= 24;
+    timestamp->hour = BCDSub(timestamp->hour, 0x24); 
   }
   
-  if ((int8_t) timestamp->day < 1)
+  if ((timestamp->day == 0) || (timestamp->day > 0x50))
   {
-    timestamp->month--;
+    timestamp->month = BCDSub(timestamp->month, 1); 
     if (timestamp->month == 0)
     {
-      timestamp->year--;
-      if ((timestamp->year & 0xf) == 0xf) 
-        timestamp->year -= 6;
-      timestamp->month = 12;
+      timestamp->year = BCDSub(timestamp->year, 1); 
+      timestamp->month = 0x12;
     }
     
-    timestamp->day +=  GetDaysPerMonth(timestamp->month, timestamp->year);
+    timestamp->day = BCDAdd( GetDaysPerMonth(timestamp->month, timestamp->year), timestamp->day);
     return;
   }
   
@@ -77,41 +77,39 @@ static void NormalizeHours(struct DateTime *timestamp)
  
   if (daysThisMonth < timestamp->day)
   {
-    timestamp->month++;
-    timestamp->day -= daysThisMonth;
-    if (timestamp->month == 13)
+    timestamp->month = BCDAdd(timestamp->month, 1);
+    timestamp->day = BCDSub(timestamp->month, daysThisMonth);
+    if (timestamp->month == 0x13)
     {
-      timestamp->year ++;
-      if ((timestamp->year & 0xf) == 0xa) 
-        timestamp->year += 6;
+      timestamp->year = BCDAdd(timestamp->year, 1);      
       timestamp->month = 1;
     }
   }
 }
 
-
-static uint8_t GetDateOfLastSunday(uint8_t month, uint8_t year) 
+uint8_t GetDateOfLastSunday(uint8_t month, uint8_t year) 
 {
   const uint8_t lastDayOfMonth = GetDaysPerMonth(month, year);
   // Determine the day-of-week of that date. If it is a sunday, then that's the answer.
   
   const uint8_t weekdayOfLastDay = GetDayOfWeek(lastDayOfMonth, month, year);
+  
   if (weekdayOfLastDay == 7)
   {
     return lastDayOfMonth;
   }
   
   // If it is monday(1), then the transition is on the previous day. If it was on tuesday(2), it was two days before, etc.
-  return lastDayOfMonth - weekdayOfLastDay;
+  return BCDSub(lastDayOfMonth, weekdayOfLastDay);
 }
 
 static _Bool IsDSTActive(const struct DateTime *timestamp, _Bool timestampIsUTC)
 {
   // DST is active from the last sunday of march until the last sunday of october. 
-  if (timestamp->month < 3 || timestamp->month > 10) // jan, feb, nov, dec
+  if (timestamp->month < 3 || timestamp->month > 0x10) // jan, feb, nov, dec
   {
     return false;
-  } else if (timestamp->month > 3 && timestamp->month < 10) // apr, may, jun, jul, aug, sept
+  } else if (timestamp->month > 3 && timestamp->month < 0x10) // apr, may, jun, jul, aug, sept
   {
     return true;
   }
@@ -139,12 +137,13 @@ static _Bool IsDSTActive(const struct DateTime *timestamp, _Bool timestampIsUTC)
   
   return (timestamp->month == 3 ? pastTransitionDay : !pastTransitionDay);
 }
+
 void UTCToCentralEuropeanTime(struct DateTime *timestamp)
 {
   if (IsDSTActive(timestamp, true))
-    timestamp->hour += 2;
+    timestamp->hour = BCDAdd(timestamp->hour, 2);
   else
-    timestamp->hour += 1;
+    timestamp->hour = BCDAdd(timestamp->hour, 1);
     
   NormalizeHours(timestamp);
 }
@@ -152,9 +151,9 @@ void UTCToCentralEuropeanTime(struct DateTime *timestamp)
 void CentralEuropeanTimeToUTC(struct DateTime *timestamp)
 {
   if (IsDSTActive(timestamp, false))
-    timestamp->hour -= 2;
+    timestamp->hour = BCDSub(timestamp->hour, 2);
   else
-    timestamp->hour -= 1;
+    timestamp->hour = BCDSub(timestamp->hour, 1);
     
   NormalizeHours(timestamp);
 }

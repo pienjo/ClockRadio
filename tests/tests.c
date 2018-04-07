@@ -6,6 +6,8 @@
 #include <simavr/avr/avr_mcu_section.h>
 #include "../Timefuncs.h"
 #include "../DateTime.h"
+#include "../BCDFuncs.h"
+
 #include <avr/pgmspace.h>
 
 AVR_MCU(F_CPU, "atmega168p");
@@ -21,22 +23,24 @@ static int uart_putchar(char c, FILE *stream)
 static FILE mystdout = FDEV_SETUP_STREAM(uart_putchar, NULL,
                                          _FDEV_SETUP_WRITE);
 
+_Bool errorOccurred = 0;
+
 const uint8_t PROGMEM DOW_tests[] = 
 {
   // day, month, year, expected
-  1, 12, 0x00, 5,
-  1, 5, 0x17, 1,
-  1, 1, 0x18, 1,
-  2, 1, 0x18, 2,
-  3, 1, 0x18, 3,
-  4, 1, 0x18, 4,
-  5, 1, 0x18, 5,
-  6, 1, 0x18, 6,
-  7, 1, 0x18, 7,
-  8, 1, 0x18, 1,
-  31,1, 0x18, 3,
-  1, 2, 0x18, 4,
-  6, 4, 0x18, 5, 
+  0x1, 0x12, 0x00, 5,
+  0x1, 0x05, 0x17, 1,
+  0x1, 0x01, 0x18, 1,
+  0x2, 0x01, 0x18, 2,
+  0x3, 0x01, 0x18, 3,
+  0x4, 0x01, 0x18, 4,
+  0x5, 0x01, 0x18, 5,
+  0x6, 0x01, 0x18, 6,
+  0x7, 0x01, 0x18, 7,
+  0x8, 0x01, 0x18, 1,
+  0x31,0x01, 0x18, 3,
+  0x1, 0x02, 0x18, 4,
+  0x6, 0x04, 0x18, 5, 
   0, 0, 0,  0,
 };
 
@@ -55,14 +59,14 @@ static void Test_GetDayOfWeek()
 
     const uint8_t actual = GetDayOfWeek(day, month, year);
 
-    const uint8_t readable_year = 10* (year >> 4) +  (year & 0xf);
     if (actual != expect)
     {
-      printf("%d/%d/20%02d: Expected %d, got %d\n", day, month, readable_year, expect, actual);
+      printf("%02x/%02x/20%02x: Expected %2x, got %2x\n", day, month, year, expect, actual);
+      errorOccurred = 1;
     }
     else
     {
-      printf("%d/%d/20%02d: OK (%d)\n", day, month, readable_year, expect);
+      printf("%02x/%02x/20%02x: OK (%d)\n", day, month, year, expect);
     }
 
   }
@@ -70,18 +74,18 @@ static void Test_GetDayOfWeek()
 
 const uint8_t PROGMEM DPM_tests[] =  {
   /* Month, year (BCD), expcted */
-  1, 1, 0x31,
-  2, 1, 0x28,
-  3, 1, 0x31,
-  4, 1, 0x30,
-  5, 1, 0x31,
-  6, 1, 0x30,
-  7, 1, 0x31,
-  8, 1, 0x31,
-  9, 1, 0x30,
-  10, 1, 0x31,
-  11, 1, 0x30,
-  12, 1, 0x31,
+  0x1, 1, 0x31,
+  0x2, 1, 0x28,
+  0x3, 1, 0x31,
+  0x4, 1, 0x30,
+  0x5, 1, 0x31,
+  0x6, 1, 0x30,
+  0x7, 1, 0x31,
+  0x8, 1, 0x31,
+  0x9, 1, 0x30,
+  0x10, 1, 0x31,
+  0x11, 1, 0x30,
+  0x12, 1, 0x31,
   0, 0, 0
 };
 
@@ -98,16 +102,172 @@ static void Test_GetDaysPerMonth()
       break;
 
     const uint8_t actual = GetDaysPerMonth(month, year);
-    const uint8_t readable_year = 10* (year >> 4) +  (year & 0xf);
+    
     if (actual != expect)
     {
-      printf("%d/20%02d: Expected %d, got %d\n",month, readable_year, expect, actual);
+      printf("%02x/20%02x: Expected %02x, got %02x\n",month, year, expect, actual);
+      errorOccurred = 1;
     }
     else
     {
-      printf("%d/20%02d: OK (%d)\n",month, readable_year, expect);
+      printf("%02x/20%02x: OK (%02x)\n",month, year, expect);
     }
 
+  }
+}
+
+const uint8_t PROGMEM DOLS_tests[] =  {
+  /* Month, year (BCD), expcted */
+  0x1, 1, 0x28,
+  0x2, 1, 0x25,
+  0x3, 1, 0x25,
+  0x4, 1, 0x29,
+  0x5, 1, 0x27,
+  0x6, 1, 0x24,
+  0x7, 1, 0x29,
+  0x8, 1, 0x26,
+  0x9, 1, 0x30,
+  0x10, 1, 0x28,
+  0x11, 1, 0x25,
+  0x12, 1, 0x30,
+  0x02, 0x20, 0x23,
+  0, 0, 0
+};
+
+static void Test_GetDateOfLastSunday()
+{
+  printf("GetDateOfLastSunday..\n");
+  for( int testIdx = 0; ; ++testIdx)
+  {
+    const uint8_t month = pgm_read_byte( 3 * testIdx + DOLS_tests + 0),
+                  year  = pgm_read_byte( 3 * testIdx + DOLS_tests + 1),
+		  expect= pgm_read_byte( 3 * testIdx + DOLS_tests + 2);
+
+    if (month == 0)
+      break;
+
+    const uint8_t actual = GetDateOfLastSunday(month, year);
+    
+    if (actual != expect)
+    {
+      printf("%02x/20%02x: Expected %02x, got %02x\n",month, year, expect, actual);
+      errorOccurred = 1;
+    }
+    else
+    {
+      printf("%02x/20%02x: OK (%02x)\n",month, year, expect);
+    }
+
+  }
+}
+
+const uint8_t PROGMEM BCDToBin_tests[] =  
+{
+  0x1,   1,
+  0x9,   9,
+  0x10, 10,
+  0x19, 19,
+  0x20, 20,
+  0x99, 99,
+  0,0 
+};
+
+static void Test_BCDToBin()
+{
+  printf("BCDToBin..\n");
+  
+  for (int testIdx = 0;; ++testIdx)
+  {
+    const uint8_t input = pgm_read_byte(2 * testIdx + BCDToBin_tests + 0),
+		  expect = pgm_read_byte(2 * testIdx + BCDToBin_tests + 1);
+		  
+    if (input == 0)
+      break;
+      
+    const uint8_t actual = BCDToBin(input);
+    
+    if (actual != expect)
+    {
+      printf("0x%02x: Expected %d, got %d\n", input, expect, actual);
+      errorOccurred = 1;
+    }
+    else 
+    { 
+      printf("0x%02x: OK (%d)\n", input, actual);
+    }
+  }
+}
+
+const uint8_t PROGMEM BCDAdd_tests[] =  {
+    // left, right, expected
+    0x00, 0x12, 0x12,
+    0x13, 0x00, 0x13,
+    0x04, 0x06, 0x10,
+    0x05, 0x06, 0x11,
+    0x09, 0x09, 0x18,
+    0x19, 0x05, 0x24,
+    0x54, 0x55, 0x09, // overflow
+    0x32, 0x99, 0x31, // overflow  
+    0xff, 0xff, 0xff
+};
+
+static void Test_BCDAdd() 
+{
+  printf("BCDAdd..\n");
+  for( int testIdx = 0; ; ++testIdx)
+  {
+    const uint8_t left = pgm_read_byte( 3 * testIdx + BCDAdd_tests + 0),
+                  right = pgm_read_byte( 3 * testIdx + BCDAdd_tests + 1),
+		  expect= pgm_read_byte( 3 * testIdx + BCDAdd_tests + 2);
+
+    if (left == 0xff)
+      break;
+    
+    const uint8_t actual = BCDAdd(left, right);
+    if (actual != expect)
+    {
+      printf("0x%02x + 0x%02x: Expected 0x%02x, got 0x%02x\n", left, right, expect, actual);
+      errorOccurred = 1;
+    }
+    else
+    {
+      printf("0x%02x + 0x%02x: OK(0x%02x)\n", left, right, actual);
+    }
+  }
+}
+
+
+const uint8_t PROGMEM BCDSub_tests[] =  {
+    // left, right, expected
+    0x09, 0x04, 0x05,
+    0x90, 0x50, 0x40,
+    0x10, 0x01, 0x09,
+    0x00, 0x99, 0x01,
+    0xff, 0xff, 0xff
+};
+
+static void Test_BCDSub() 
+{
+  printf("BCDSub..\n");
+  for( int testIdx = 0; ; ++testIdx)
+  {
+    const uint8_t left = pgm_read_byte( 3 * testIdx + BCDSub_tests + 0),
+                  right = pgm_read_byte( 3 * testIdx + BCDSub_tests + 1),
+		  expect= pgm_read_byte( 3 * testIdx + BCDSub_tests + 2);
+
+    if (left == 0xff)
+      break;
+    
+    const uint8_t actual = BCDSub(left, right);
+    if (actual != expect)
+    {
+      printf("0x%02x - 0x%02x: Expected 0x%02x, got 0x%02x\n", left, right, expect, actual);
+      errorOccurred = 1;
+    }
+    else
+    {
+      printf("0x%02x - 0x%02x: OK(0x%02x)\n", left, right, actual);
+    }
   }
 }
 
@@ -115,9 +275,18 @@ int main()
 { 
   stdout = &mystdout;
 
+  Test_BCDToBin();
+  Test_BCDAdd();
+  Test_BCDSub();
   Test_GetDayOfWeek();
   Test_GetDaysPerMonth();
-  printf("Test done\n");
+  Test_GetDateOfLastSunday();
+  
+  if (errorOccurred)
+    printf("Test done, with errors\n");
+  else
+    printf("Tests done, no errors\n");
   sleep_cpu();  
 }
+
 

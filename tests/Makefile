@@ -5,7 +5,7 @@ MCU=atmega168p
 FREQ=16000000
 CURRENT_DIR = $(shell pwd)
 
-SOURCES= tests.c ../Timefuncs.c
+SOURCES= tests.c ../Timefuncs.c ../BCDFuncs.c
 TARGET= PanelClock_test
 
 ASFLAGS+= 
