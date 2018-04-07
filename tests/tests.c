@@ -271,6 +271,80 @@ static void Test_BCDSub()
   }
 }
 
+const uint8_t PROGMEM NormalizeHours_tests[] =
+{
+  // Year, Month, Day, Hour -> Year, Month, Day, Hour
+  0x12, 0x10, 0x20, 0x21  , 0x12, 0x10, 0x20, 0x21, // No change 
+  0x12, 0x10, 0x20, 0x25  , 0x12, 0x10, 0x21, 0x01, // Day rollover  (positive)
+  0x12, 0x10, 0x31, 0x24  , 0x12, 0x11, 0x01, 0x00, // Month rollover (positive)
+  0x12, 0x12, 0x31, 0x26  , 0x13, 0x01, 0x01, 0x02, // year rollover (positive)
+  0x12, 0x10, 0x20, 0x99  , 0x12, 0x10, 0x19, 0x23, // Day rollover  (negative)
+  0x12, 0x10, 0x01, 0x98  , 0x12, 0x09, 0x30, 0x22, // Month rollover (negative)
+  0x12, 0x01, 0x01, 0x97  , 0x11, 0x12, 0x31, 0x21, // year rollover (negative)
+  0x00
+};
+
+inline static _Bool timesAreEqual(struct DateTime *time1, struct DateTime *time2)
+{
+  if (time1->year != time2->year || time1->month != time2->month || time1->day != time2->day ||
+      time1->hour != time2->hour || time1->min   != time2->min   || time1->sec != time2->sec)
+      return 0;
+  return 1;
+}
+
+static inline void printTime(struct DateTime *time)
+{
+  printf("%02x/%02x/%02x %02x:%02x:%02x",time->year, time->month, time->day, time->hour, time->min, time->sec); 
+}
+
+void Test_NormalizeHours() 
+{
+  struct DateTime testTime;
+  struct DateTime expectedTime;
+  
+  // constant among all tests
+  testTime.min = 0x12;
+  testTime.sec = 0x45;
+  expectedTime.min = 0x12;
+  expectedTime.sec = 0x45;
+  
+  printf("NormalizeHours..\n");
+  for( int testIdx = 0; ; ++testIdx)
+  {
+    testTime.year = pgm_read_byte( 8 * testIdx + NormalizeHours_tests + 0);
+    if (testTime.year == 0)
+      break;
+    testTime.month = pgm_read_byte( 8 * testIdx + NormalizeHours_tests + 1);
+    testTime.day = pgm_read_byte( 8 * testIdx + NormalizeHours_tests + 2);
+    testTime.hour = pgm_read_byte( 8 * testIdx + NormalizeHours_tests + 3);
+    
+    expectedTime.year = pgm_read_byte( 8 * testIdx + NormalizeHours_tests + 4);
+    expectedTime.month = pgm_read_byte( 8 * testIdx + NormalizeHours_tests + 5);
+    expectedTime.day = pgm_read_byte( 8 * testIdx + NormalizeHours_tests + 6);
+    expectedTime.hour = pgm_read_byte( 8 * testIdx + NormalizeHours_tests + 7);
+    
+    printTime(&testTime);
+    
+    NormalizeHours(&testTime);
+    if (timesAreEqual(&testTime, &expectedTime))
+    {
+       printf(" OK: (");
+       printTime(&testTime);
+       printf(")\n");
+    }
+    else
+    {
+      printf(": Expected ");
+      printTime(&expectedTime);
+      printf(" Got ");
+      printTime(&testTime);
+      uart_putchar('\n', stdout);
+      errorOccurred =1;
+    }
+    
+  }
+}
+
 int main()
 { 
   stdout = &mystdout;
@@ -281,6 +355,7 @@ int main()
   Test_GetDayOfWeek();
   Test_GetDaysPerMonth();
   Test_GetDateOfLastSunday();
+  Test_NormalizeHours();
   
   if (errorOccurred)
     printf("Test done, with errors\n");

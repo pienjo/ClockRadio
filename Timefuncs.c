@@ -40,7 +40,7 @@ uint8_t GetDayOfWeek(uint8_t Day, uint8_t Month, uint8_t year /* 20xx */) // 1 -
   return  ((year + year / 4 /* -y/100 + y / 400 */ + pgm_read_byte(dowTable + BCDToBin(Month) -1) + BCDToBin(Day) - 1) % 7) + 1;
 }
 
-static void NormalizeHours(struct DateTime *timestamp)
+void NormalizeHours(struct DateTime *timestamp)
 {
   if (timestamp->hour < 0x24)
     return; // Nothing to do.
@@ -78,7 +78,7 @@ static void NormalizeHours(struct DateTime *timestamp)
   if (daysThisMonth < timestamp->day)
   {
     timestamp->month = BCDAdd(timestamp->month, 1);
-    timestamp->day = BCDSub(timestamp->month, daysThisMonth);
+    timestamp->day = BCDSub(timestamp->day, daysThisMonth);
     if (timestamp->month == 0x13)
     {
       timestamp->year = BCDAdd(timestamp->year, 1);      
