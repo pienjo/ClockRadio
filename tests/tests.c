@@ -281,7 +281,7 @@ const uint8_t PROGMEM NormalizeHours_tests[] =
   0x12, 0x10, 0x20, 0x99  , 0x12, 0x10, 0x19, 0x23, // Day rollover  (negative)
   0x12, 0x10, 0x01, 0x98  , 0x12, 0x09, 0x30, 0x22, // Month rollover (negative)
   0x12, 0x01, 0x01, 0x97  , 0x11, 0x12, 0x31, 0x21, // year rollover (negative)
-  0x00
+  0xff
 };
 
 inline static _Bool timesAreEqual(struct DateTime *time1, struct DateTime *time2)
@@ -312,7 +312,7 @@ void Test_NormalizeHours()
   for( int testIdx = 0; ; ++testIdx)
   {
     testTime.year = pgm_read_byte( 8 * testIdx + NormalizeHours_tests + 0);
-    if (testTime.year == 0)
+    if (testTime.year == 0xff)
       break;
     testTime.month = pgm_read_byte( 8 * testIdx + NormalizeHours_tests + 1);
     testTime.day = pgm_read_byte( 8 * testIdx + NormalizeHours_tests + 2);
@@ -345,6 +345,78 @@ void Test_NormalizeHours()
   }
 }
 
+const uint8_t PROGMEM IDA_tests[] =
+{
+  // Year, Month, Day, Hour, UTCTime -> DSTActive
+
+  0x18, 0x4, 0x7, 0x12, 0, 1, // April is always DST.
+  0x18, 0x4, 0x7, 0x12, 1, 1, // April is always DST.
+  0x18, 0x1, 0x7, 0x12, 0, 0, // January is always not DST
+  0x18, 0x1, 0x7, 0x12, 1, 0, // January is always not DST
+  0x18, 0x11, 0x7, 0x11, 0, 0, // November is always not DST
+  0x18, 0x11, 0x7, 0x11, 1, 0, // November is always not DST
+  0x18, 0x3, 0x20, 0x12, 0, 0, // March, before transition date
+  0x18, 0x3, 0x20, 0x12, 1, 0, // March, before transition date
+  0x18, 0x3, 0x30, 0x12, 0, 1, // March, after transition date
+  0x18, 0x3, 0x30, 0x12, 1, 1, // March, after transition date
+  0x18, 0x3, 0x25, 0x00, 0, 0, // March on transation date but before time
+  0x18, 0x3, 0x25, 0x00, 1, 0, // March on transation date but before time
+  0x18, 0x3, 0x25, 0x03, 0, 1, // March on transation date but after time 
+  0x18, 0x3, 0x25, 0x03, 1, 1, // March on transation date but after time 
+  0x18, 0x10, 0x20, 0x12, 0, 1, // October, before transition date
+  0x18, 0x10, 0x20, 0x12, 1, 1, // October, before transition date
+  0x18, 0x10, 0x30, 0x12, 0, 0, // October, after transition date
+  0x18, 0x10, 0x30, 0x12, 1, 0, // October, after transition date
+  0x18, 0x10, 0x28, 0x00, 0, 1, // October on transation date but before time
+  0x18, 0x10, 0x28, 0x00, 1, 1, // October on transation date but before time
+  0x18, 0x10, 0x28, 0x02, 0, 0, // October on transation date but after time 
+  0x18, 0x10, 0x28, 0x01, 1, 0, // October on transation date but after time 
+  
+  0xff
+};
+
+static void Test_IsDSTActive()
+{
+  printf("IsDSTActive..\n");
+  
+  struct DateTime testTime;
+  
+  // constant among all tests
+  testTime.min = 0x12;
+  testTime.sec = 0x45;
+  
+  for( int testIdx = 0; ; ++testIdx)
+  {
+    testTime.year = pgm_read_byte( 6 * testIdx + IDA_tests + 0);
+    if (testTime.year == 0xff)
+      break;
+   
+    testTime.month = pgm_read_byte( 6 * testIdx + IDA_tests + 1);
+    testTime.day = pgm_read_byte( 6 * testIdx + IDA_tests + 2);
+    testTime.hour = pgm_read_byte( 6 * testIdx + IDA_tests + 3);
+    _Bool utcActive = pgm_read_byte( 6 * testIdx + IDA_tests + 4);
+    _Bool expected = pgm_read_byte( 6 * testIdx + IDA_tests + 5);
+    _Bool actual = IsDSTActive(&testTime, utcActive);
+    
+    printTime(&testTime);
+    uart_putchar('(', stdout);
+    uart_putchar(utcActive ? 'U':'C', stdout);  
+    uart_putchar(')', stdout);
+    uart_putchar(':', stdout);
+    uart_putchar(' ', stdout);
+    
+    if (actual == expected)
+    {
+      printf("OK (%d)\n", expected);
+    }
+    else
+    {
+      printf("Expected %d, got %d\n", expected, actual);
+      errorOccurred = 1;
+    }
+  }
+}
+
 int main()
 { 
   stdout = &mystdout;
@@ -356,6 +428,7 @@ int main()
   Test_GetDaysPerMonth();
   Test_GetDateOfLastSunday();
   Test_NormalizeHours();
+  Test_IsDSTActive();
   
   if (errorOccurred)
     printf("Test done, with errors\n");
