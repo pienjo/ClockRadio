@@ -9,6 +9,7 @@
 #include "SI4702.h"
 #include "settings.h"
 #include "Timefuncs.h"
+#include "BCDFuncs.h"
 
 #include "i2c.h"
 
@@ -24,7 +25,6 @@ uint8_t TheNapTime = 0;
 
 #define EDIT_MODE_ONES     0x1
 #define EDIT_MODE_TENS     0x2
-#define EDIT_MODE_NUMBER   (EDIT_MODE_ONES |EDIT_MODE_TENS)
 #define EDIT_MODE_MASK     0x03
 #define EDIT_MODE_ONEBASE 0x04
 
@@ -259,35 +259,12 @@ void HandleEditUp(const uint8_t editMode, uint8_t *const editDigit, const uint8_
   {
     case EDIT_MODE_ONES:
     {
-      uint8_t v = *editDigit;
-      v = v&0x0f;
-      if (v < 9)
-      {
-	v++;
-	*editDigit = (*editDigit & 0xf0) | v;
-      }
-      else
-      {
-	*editDigit += 7;
-      }
+      *editDigit = BCDAdd(*editDigit, 1);
       break;
     }
     case EDIT_MODE_TENS:
     {
-      uint8_t v = *editDigit;
-      v = v&0xf0;
-      if (v < 0x90)
-	v+= 0x10;
-      *editDigit = (*editDigit & 0x0f) | v;
-      break;
-    }
-    case EDIT_MODE_NUMBER:
-    {
-      (*editDigit)++;
-      if ((*editDigit & 0x0f) == 0x0a)
-      {
-	*editDigit += 6; 
-      }
+      *editDigit = BCDAdd(*editDigit, 10);
       break;
     }
   }
@@ -302,39 +279,13 @@ void HandleEditDown(const uint8_t editMode, uint8_t *const editDigit, const uint
   {
     case EDIT_MODE_ONES:
     {
-      uint8_t v = *editDigit;
-      v = v&0x0f;
-      if (v > 0)
-      {
-	v--;
-	*editDigit = (*editDigit & 0xf0) | v;
-      }
-      else
-      {
-	if (*editDigit > 0)
-	  *editDigit-= 7; 
-      }
+      *editDigit = BCDSub(*editDigit, 1);
       break;
     }
     case EDIT_MODE_TENS:
     {
-      uint8_t v = *editDigit;
-      v = v&0xf0;
-      if (v > 0x00)
-	v-= 0x10;
-      *editDigit = (*editDigit & 0x0f) | v;
-      break;
-    }
-    case EDIT_MODE_NUMBER:
-    {
-      if (*editDigit > 0)
-      {
-	(*editDigit)--;
-	if ((*editDigit & 0x0f) == 0x0f)
-	{
-	  *editDigit -= 6; 
-	}
-      }
+      if (*editDigit > 0x10)
+	*editDigit = BCDSub(*editDigit, 10);
       break;
     }
   }
@@ -1017,7 +968,7 @@ int main(void)
           break;
         case modeAdjustMonth:
 	  modeTimeout = 255;
-          editMode = EDIT_MODE_NUMBER | EDIT_MODE_ONEBASE; 
+          editMode = EDIT_MODE_ONES | EDIT_MODE_ONEBASE; 
           editDigit = &TheDateTime.month;
           editMaxValue = 0x12;
           Renderer_SetFlashMask(0x30); 
