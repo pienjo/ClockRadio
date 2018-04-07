@@ -2,6 +2,7 @@
 #define __SETTINGS_H__
 
 #include <inttypes.h>
+#include "DateTime.h"
 
 struct AlarmSetting
 {
@@ -37,6 +38,7 @@ struct GlobalSettings
 {
   struct RadioSettings radio;
   uint8_t              brightness;
+  uint8_t              brightness_night;
   struct AlarmSetting  alarm1, 
                        alarm2;
 };
@@ -45,4 +47,8 @@ extern struct GlobalSettings TheGlobalSettings;
 
 _Bool ReadGlobalSettings(); // returns true if settings were sucessfully read.
 void WriteGlobalSettings();
+
+uint8_t GetActiveBrightness(const struct DateTime *timestamp);
+uint8_t IncreaseBrightness(const struct DateTime *timestamp);
+uint8_t DecreaseBrightness(const struct DateTime *timestamp);
 #endif

@@ -157,3 +157,34 @@ void CentralEuropeanTimeToUTC(struct DateTime *timestamp)
     
   NormalizeHours(timestamp);
 }
+
+// Use a naive lookup table
+const uint8_t PROGMEM DaylightTable[] =
+{
+  // Hour of rise, hour of set
+  /* Jan */ 0x07,  0x18,
+  /* Feb */ 0x07,  0x18,
+  /* Mar */ 0x06,  0x19,
+  /* Apr */ 0x06,  0x21,
+  /* May */ 0x05,  0x22,
+  /* Jun */ 0x05,  0x22,
+  /* Jul */ 0x05,  0x22,
+  /* Aug */ 0x05,  0x21,
+  /* Sep */ 0x06,  0x20,
+  /* Oct */ 0x06,  0x19,
+  /* Nov */ 0x07,  0x18,
+  /* Dec */ 0x07,  0x18,
+};
+
+_Bool ItIsDarkOutside(const struct DateTime *timestamp) 
+{
+  uint8_t idx = timestamp->month;
+  if (idx > 9) idx -= 6;
+  idx += idx;
+  
+  if (timestamp->hour < pgm_read_byte(DaylightTable + idx))
+    return 1;
+  if (timestamp->hour >= pgm_read_byte(DaylightTable + idx + 1))
+    return 1;
+  return 0;
+}

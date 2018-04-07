@@ -1,5 +1,6 @@
 #include "settings.h"
 #include "DS1307.h"
+#include "Timefuncs.h"
 #include <util/crc16.h>
 
 struct GlobalSettings TheGlobalSettings;
@@ -32,4 +33,44 @@ void WriteGlobalSettings()
   uint8_t checksum = CalculateCRC();
   Write_DS1307_RAM(&checksum, 0, 1);
   Write_DS1307_RAM((uint8_t *) &TheGlobalSettings, 1, sizeof(struct GlobalSettings));
+}
+
+uint8_t GetActiveBrightness(const struct DateTime *timestamp)
+{
+  if (ItIsDarkOutside(timestamp))
+    return TheGlobalSettings.brightness_night;
+  else
+    return TheGlobalSettings.brightness;
+}
+
+uint8_t IncreaseBrightness(const struct DateTime *timestamp)
+{
+  if (ItIsDarkOutside(timestamp))
+  {
+    if (TheGlobalSettings.brightness_night < 15)
+      TheGlobalSettings.brightness_night++;
+    return TheGlobalSettings.brightness_night;
+  }
+  else
+  {
+    if (TheGlobalSettings.brightness < 15)
+      TheGlobalSettings.brightness++;
+    return TheGlobalSettings.brightness;
+  }
+}
+
+uint8_t DecreaseBrightness(const struct DateTime *timestamp)
+{
+  if (ItIsDarkOutside(timestamp))
+  {
+    if (TheGlobalSettings.brightness_night != 0)
+      TheGlobalSettings.brightness_night--;
+    return TheGlobalSettings.brightness_night;
+  }
+  else
+  {
+    if (TheGlobalSettings.brightness != 0)
+      TheGlobalSettings.brightness--;
+    return TheGlobalSettings.brightness;
+  }
 }

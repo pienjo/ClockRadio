@@ -372,11 +372,12 @@ int main(void)
     TheGlobalSettings.alarm2.hour = 9;
     TheGlobalSettings.alarm2.min = 0x15; 
     
-    TheGlobalSettings.brightness = 3; // Default brightness.
+    TheGlobalSettings.brightness = 13;
+    TheGlobalSettings.brightness_night = 3; 
     WriteGlobalSettings();
   }
 
-  SetBrightness(TheGlobalSettings.brightness);
+  SetBrightness(GetActiveBrightness(&TheDateTime));
   
   // Set port D to input, enable pull-up on portD except for PortD2 (ext0)
 
@@ -531,6 +532,7 @@ int main(void)
 	    
 	    newDeviceMode = modeAlarmFiring;
 	  }
+	  SetBrightness(GetActiveBrightness(&TheDateTime));
         }	
 	ThePreviousDateTime = TheDateTime;
 	
@@ -583,15 +585,13 @@ int main(void)
 	} else if (longPressEvent.shortPress & BUTTON1_CLICK)
 	{
 	  newDeviceMode = modeShowDate;
-	} else if (TheGlobalSettings.brightness != 0 && longPressEvent.repPress & BUTTON3_CLICK)
+	} else if (longPressEvent.repPress & BUTTON3_CLICK)
 	{
-	  TheGlobalSettings.brightness--;
-	  SetBrightness(TheGlobalSettings.brightness);
+	  SetBrightness(DecreaseBrightness(&TheDateTime));
 	  writeSettingTimeout = 5;
-	} else if (TheGlobalSettings.brightness < 15 && longPressEvent.repPress & BUTTON4_CLICK)
+	} else if (longPressEvent.repPress & BUTTON4_CLICK)
 	{
-	  TheGlobalSettings.brightness++;
-	  SetBrightness(TheGlobalSettings.brightness);
+	  SetBrightness(IncreaseBrightness(&TheDateTime));
 	  writeSettingTimeout = 5;
 	}
 	break;
