@@ -103,7 +103,7 @@ uint8_t GetDateOfLastSunday(uint8_t month, uint8_t year)
   return BCDSub(lastDayOfMonth, weekdayOfLastDay);
 }
 
-static _Bool IsDSTActive(const struct DateTime *timestamp, _Bool timestampIsUTC)
+_Bool IsDSTActive(const struct DateTime *timestamp, _Bool timestampIsUTC)
 {
   // DST is active from the last sunday of march until the last sunday of october. 
   if (timestamp->month < 3 || timestamp->month > 0x10) // jan, feb, nov, dec
