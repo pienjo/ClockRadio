@@ -7,7 +7,7 @@
 #include "../Timefuncs.h"
 #include "../DateTime.h"
 #include "../BCDFuncs.h"
-
+#include "../settings.h"
 #include <avr/pgmspace.h>
 
 AVR_MCU(F_CPU, "atmega168p");
@@ -417,6 +417,284 @@ static void Test_IsDSTActive()
   }
 }
 
+const uint8_t PROGMEM IIDO_tests[] = 
+{
+  // Month, hour, expected
+  0x01, 0x06, 1,
+  0x01, 0x12, 0,
+  0x01, 0x18, 1,
+  0x07, 0x04, 1,
+  0x07, 0x06, 0,
+  0x07, 0x12, 0,
+  0x07, 0x18, 0,
+  0x07, 0x22, 1,
+  0xff
+};
+
+static void Test_IsItDarkOutside()
+{
+  printf("IsItDarkOutside\n");
+  
+  struct DateTime testTime;
+  
+  // constant among all tests
+  testTime.day = 0x05;
+  testTime.year= 0x18;
+  testTime.sec = 0x00;
+  testTime.min = 0x10;
+  
+  for( int testIdx = 0; ; ++testIdx)
+  {
+    testTime.month = pgm_read_byte( 3 * testIdx + IIDO_tests + 0);
+    if (testTime.month == 0xff)
+      break;
+    testTime.hour = pgm_read_byte( 3 * testIdx + IIDO_tests + 1);
+    
+    const _Bool expect = pgm_read_byte( 3 * testIdx + IIDO_tests + 2);
+    
+    const _Bool actual = ItIsDarkOutside(&testTime);
+    
+    printTime(&testTime);
+    if (expect == actual)
+    {
+      printf(": OK (%d)\n", actual);
+    }
+    else
+    {
+      printf(": Expected %d, got %d\n", expect, actual);
+      errorOccurred = 1;
+    }
+  }
+  
+}
+
+struct GlobalSettings TheGlobalSettings;
+
+void Test_GetActiveBrightness()
+{
+  printf("Test_GetActiveBrightness..\n");
+  
+  TheGlobalSettings.brightness = 10;
+  TheGlobalSettings.brightness_night = 3;
+  
+  struct DateTime testTime;
+  
+  // Midnight
+  testTime.year = 0x00;
+  testTime.month = 0x07;
+  testTime.day = 0x01;
+  testTime.hour = 0x00;
+  testTime.min = 0x00;
+  testTime.sec = 0x00;
+  
+  printTime(&testTime);
+  uint8_t actual = GetActiveBrightness(&testTime);
+  if(actual != TheGlobalSettings.brightness_night)
+  {
+    printf(": Expected %d, got %d\n", TheGlobalSettings.brightness_night, actual);
+    errorOccurred = 1;
+  }
+  else
+  {
+    printf(": OK\n");
+  }
+  
+  // Midday
+  testTime.hour = 0x12;
+  
+  printTime(&testTime);
+  actual = GetActiveBrightness(&testTime);
+  if(actual != TheGlobalSettings.brightness)
+  {
+    printf(": Expected %d, got %d\n", TheGlobalSettings.brightness, actual);
+    errorOccurred = 1;
+  }
+  else
+  {
+    printf(": OK\n");
+  }
+}
+
+void Test_IncreaseBrightness()
+{
+  printf("IncreaseBrightness..\n");
+      
+  const uint8_t initialBrightness = 10, initialNightBrightness = 3;
+  
+  TheGlobalSettings.brightness = initialBrightness;
+  TheGlobalSettings.brightness_night = initialNightBrightness;
+
+  struct DateTime testTime;
+  
+  // Midnight
+  testTime.year = 0x00;
+  testTime.month = 0x07;
+  testTime.day = 0x01;
+  testTime.hour = 0x00;
+  testTime.min = 0x00;
+  testTime.sec = 0x00;
+  
+  printTime(&testTime);
+  
+  IncreaseBrightness(&testTime);
+  
+  if (TheGlobalSettings.brightness != initialBrightness)
+  {
+    printf(": Wrong setting changed.\n");
+    errorOccurred = 1;
+  }
+  else
+  {
+    if (TheGlobalSettings.brightness_night != initialNightBrightness + 1)
+    {
+      printf(": Expected %d, got %d\n", initialNightBrightness + 1, TheGlobalSettings.brightness_night);
+      errorOccurred = 1;
+    }
+    else
+    {
+      for (int i = 0; i < 15; ++i)
+	IncreaseBrightness(&testTime);
+	
+      if (TheGlobalSettings.brightness_night != 15)
+      {
+	printf(": Setting didn't clip, got %d\n", TheGlobalSettings.brightness_night);
+	errorOccurred = 1;
+      }
+      else
+      {
+	printf(": OK\n");
+      }
+    }
+  }
+  
+  TheGlobalSettings.brightness_night = initialNightBrightness;
+  
+  // Midday
+  testTime.hour = 0x12;
+  printTime(&testTime);
+  
+  IncreaseBrightness(&testTime);
+  
+  if (TheGlobalSettings.brightness_night != initialNightBrightness)
+  {
+    printf(": Wrong setting changed.\n");
+    errorOccurred = 1;
+  }
+  else
+  {
+    if (TheGlobalSettings.brightness != initialBrightness + 1)
+    {
+      printf(": Expected %d, got %d\n", initialBrightness + 1, TheGlobalSettings.brightness);
+      errorOccurred = 1;
+    }
+    else
+    {
+      for (int i = 0; i < 15; ++i)
+	IncreaseBrightness(&testTime);
+	
+      if (TheGlobalSettings.brightness != 15)
+      {
+	printf(": Setting didn't clip, got %d\n", TheGlobalSettings.brightness);
+	errorOccurred = 1;
+      }
+      else
+      {
+	printf(": OK\n");
+      }
+    }
+  }
+}
+
+void Test_DecreaseBrightness()
+{
+  printf("DecreaseBrightness..\n");
+      
+  const uint8_t initialBrightness = 10, initialNightBrightness = 3;
+  
+  TheGlobalSettings.brightness = initialBrightness;
+  TheGlobalSettings.brightness_night = initialNightBrightness;
+
+  struct DateTime testTime;
+  
+  // Midnight
+  testTime.year = 0x00;
+  testTime.month = 0x07;
+  testTime.day = 0x01;
+  testTime.hour = 0x00;
+  testTime.min = 0x00;
+  testTime.sec = 0x00;
+  
+  printTime(&testTime);
+  
+  DecreaseBrightness(&testTime);
+  
+  if (TheGlobalSettings.brightness != initialBrightness)
+  {
+    printf(": Wrong setting changed.\n");
+    errorOccurred = 1;
+  }
+  else
+  {
+    if (TheGlobalSettings.brightness_night != initialNightBrightness - 1)
+    {
+      printf(": Expected %d, got %d\n", initialNightBrightness - 1, TheGlobalSettings.brightness_night);
+      errorOccurred = 1;
+    }
+    else
+    {
+      for (int i = 0; i < 15; ++i)
+	DecreaseBrightness(&testTime);
+	
+      if (TheGlobalSettings.brightness_night != 0)
+      {
+	printf(": Setting didn't clip, got %d\n", TheGlobalSettings.brightness_night);
+	errorOccurred = 1;
+      }
+      else
+      {
+	printf(": OK\n");
+      }
+    }
+  }
+  
+  TheGlobalSettings.brightness_night = initialNightBrightness;
+  
+  // Midday
+  testTime.hour = 0x12;
+  printTime(&testTime);
+  
+  DecreaseBrightness(&testTime);
+  
+  if (TheGlobalSettings.brightness_night != initialNightBrightness)
+  {
+    printf(": Wrong setting changed.\n");
+    errorOccurred = 1;
+  }
+  else
+  {
+    if (TheGlobalSettings.brightness != initialBrightness - 1)
+    {
+      printf(": Expected %d, got %d\n", initialBrightness - 1, TheGlobalSettings.brightness);
+      errorOccurred = 1;
+    }
+    else
+    {
+      for (int i = 0; i < 15; ++i)
+	DecreaseBrightness(&testTime);
+	
+      if (TheGlobalSettings.brightness != 0)
+      {
+	printf(": Setting didn't clip, got %d\n", TheGlobalSettings.brightness);
+	errorOccurred = 1;
+      }
+      else
+      {
+	printf(": OK\n");
+      }
+    }
+  }
+}
+
 int main()
 { 
   stdout = &mystdout;
@@ -429,6 +707,10 @@ int main()
   Test_GetDateOfLastSunday();
   Test_NormalizeHours();
   Test_IsDSTActive();
+  Test_IsItDarkOutside();
+  Test_GetActiveBrightness();
+  Test_IncreaseBrightness();
+  Test_DecreaseBrightness();
   
   if (errorOccurred)
     printf("Test done, with errors\n");
