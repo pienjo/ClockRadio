@@ -178,7 +178,7 @@ const uint8_t PROGMEM DaylightTable[] =
 
 _Bool ItIsDarkOutside(const struct DateTime *timestamp) 
 {
-  uint8_t idx = timestamp->month;
+  uint8_t idx = timestamp->month - 1;
   if (idx > 9) idx -= 6;
   idx += idx;
   
