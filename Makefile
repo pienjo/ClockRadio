@@ -28,7 +28,7 @@ DEPS=$(OBJECTS:.o=.d)
 
 LDFLAGS+= -Wl,-Map=$(TARGET).map
 
-.PHONY: all clean realclean flash outputdir verify
+.PHONY: all clean realclean flash outputdir verify test
 all: $(TARGET).hex
 
 clean: 
@@ -70,3 +70,6 @@ flash: $(TARGET).hex
 
 verify: $(TARGET).hex
 	$(AVRDUDE) $(AVRDUDE_FLAGS) -F -V -p $(MCU) -U flash:v:$<
+
+test:
+	make -C tests
