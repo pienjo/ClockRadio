@@ -25,6 +25,7 @@ enum enumSecondaryMode
   SECONDARY_MODE_NAP,
 };
 
+void Renderer_Init();
 void Renderer_Tick( const uint8_t secondaryMode ); // Must be called regularly for animations 
 
 // Update contents. if _animate is true, use "rolling" animation.

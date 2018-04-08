@@ -5,6 +5,7 @@
 #include "7Segment.h"
 #include "DateTime.h"
 #include "settings.h"
+#include <string.h>
 #include "SI4702.h"
 
 static uint8_t previousHour = 0, previousMinute = 0, animationState = 0, myMainMode = 0, ledState = 0;
@@ -13,11 +14,19 @@ static uint16_t blinkMask = 0x0;
 
 static uint8_t blinkStatus = 0;
 
+static uint8_t previousContent[ 8 * 3 ];
+
 static const struct AlarmSetting *alarm = 0;
 
 #define BLINK_PERIOD 10
 #define BLINK_SHORT_PERIOD  3
 #define BLINK_LONG_PERIOD 17
+
+void Renderer_Init()
+{
+  for (int i = 0; i < sizeof(previousContent); ++i)
+    previousContent[i] = 0;
+}
 
 void Renderer_SetAlarmStruct( const struct AlarmSetting *pAlarm )
 {
@@ -291,7 +300,10 @@ static void __privateRender(const uint8_t secondaryMode)
       if (segmentDigits[j] & row_mask)
 	data[3] |= column_mask;
     
-    SendRow(i, data);
+    if (0 != memcmp(data, previousContent + i * 3, 3))
+      SendRow(i, data);
+      
+    memcpy(previousContent + i * 3, data, 3);
   }
 
 }

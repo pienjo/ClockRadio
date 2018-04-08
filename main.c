@@ -356,6 +356,7 @@ int main(void)
   Init_I2C();
   Init_DS1307();
   Init_SI4702();
+  Renderer_Init();
   
   // Read radio defaults
   if (!ReadGlobalSettings())
