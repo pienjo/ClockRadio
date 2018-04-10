@@ -5,7 +5,8 @@
 
 void Init_I2C();
 _Bool Read_I2C_Regs(uint8_t addr, uint8_t reg, uint8_t amount, uint8_t *ptr);
-_Bool Write_I2C_Regs(uint8_t addr, uint8_t reg, uint8_t amount, uint8_t *ptr);
-
+_Bool Read_I2C_Raw(uint8_t addr, uint8_t amount, uint8_t *ptr);
+_Bool Write_I2C_Regs(uint8_t addr, uint8_t reg, uint8_t amount, const uint8_t *ptr);
+_Bool Write_I2C_Raw(uint8_t addr, uint8_t amount, const uint8_t *ptr);
 #endif
 

@@ -11,10 +11,81 @@
 // to access them as 16 bits anyway - only the 9-bit tuning registers benefit from 16-bit
 // access, but that's easily fixed
 
+// The SI4702 has a very weird I2C interface. For some bizarre reason, Read-out starts at address 
+// 0x0A, then auto-increment to 0x0F, and then wraps around to address 0. Write-out starts at 
+// register adddress 2, and since address 8 and 9 may not be written to is restricted to registers
+// 2 through 7. 
+
+// Work around the read-out wraparound by re-arranging the registers so that register 0X0a is relocated
+// to 0x00/0x01, 0x0f is relocated to 0x0a/0x0b, the wrapped-around address '0' moves to 0x0c/0x0d, 
+// register 2 (write-out start address) sits at 0x10/0x11 and register 9 sits at 0x1E/0X1F
+
+// Registers cannot be accessed directly, so there's no reason to keep the weird original layout. 
+#define RELOCATED_REGISTER_2 POWERCONFIG_H
+
 uint8_t SI4702_regs[32]; 
 
 // Register definitions
-#define POWERCONFIG_H 0x04
+
+// REGISTER A
+#define STATUS_RSSI_H 0x00
+  #define RDSR 0x80 // RDS ready
+  #define STC  0x40 // Seek/tune complete
+  #define SBFL 0x20 // Seek Fail / Band Limit
+  #define AFCRL 0x10 // AFC fail
+  #define RDSS 0x08 // RDS synchronized
+  
+  #define BLERA(x) ((x & 0x06) >> 1) // RDS block A errors
+  #define ST 0x01   // Stereo
+
+#define STATUS_RSSI_L 0x01
+  // [0:7] : RSSI (REceived Signal Strength Indicator)
+
+// REGISTER B
+#define READ_CHANNEL_H 0x02
+  #define BLERB(x) ((x & 0xC0) >> 6) // RDS Block B errors
+  #define BLERC(x) ((x & 0x30) >> 4) // RDS Block C errors
+  #define BLERD(x) ((x & 0xc0) >> 2) // RDS block D erros
+  #define READ_CHANNEL_H_BITS 0x3 // ReadChannel[8:9]
+
+#define READ_CHANNEL_L 0x03
+  // ReadChannel[7:0]
+
+// REGISTER C
+#define RDSA_H   0x04
+#define RDSA_L   0x05
+
+// REGISTER D
+#define RDSB_H   0x06
+#define RDSB_L   0x07
+
+// REGISTER E
+#define RDSC_H   0x08
+#define RDSC_L   0x09
+
+// REGISTER F
+#define RDSD_H   0x0a
+#define RDSD_L   0x0b
+
+// REGISTER 0
+#define DEVICEID_H     0x0c
+  #define PN_BITS      0xF0 // Part number mask
+  #define MFGID_H_BITS 0x0F // Bits 8-11 of manufacturer ID.
+
+#define DEVICEID_L     0x0d
+  #define MFGID_L_BITS 0xff // bits 0-7 of manufacturer ID
+  
+// REGISTER 1
+#define CHIPID_H       0x0e
+  #define REV_BITS     0xFC // Revision (?) bits
+  #define DEV_H_BITS   0x03
+#define CHIPD_L	       0x0f
+  #define DEV_L_BITS   0xC0
+  #define FIRMWARE     0x3F
+  
+// REGISTER 2
+#define POWERCONFIG_H  0x10
+
   #define DSMUTE  0x80 // Disable softmute
   #define DMUTE   0x40 // Disable mute
   #define MONO    0x20 // mono
@@ -23,25 +94,27 @@ uint8_t SI4702_regs[32];
   #define SEEKUP  0x02 // Seek up
   #define SEEK    0x01 // Start seeking
 
-#define POWERCONFIG_L 0x05
+#define POWERCONFIG_L 0x11
   #define DISABLE 0x40 // Power up disable
   #define ENABLE  0x01 // Powerup enable
 
-#define CHANNEL_H 0x06
+// REGISTER 3
+#define CHANNEL_H 0x12
   #define TUNE	   0x80 // Start tuning.
   #define CHANNEL_H_BITS 0x03 // Channel[8:9]
 
-#define CHANNEL_L 0x07
+#define CHANNEL_L 0x13
   // Channel[7:0]
 
-#define SYSCONFIG1_H 0x08
+// REGISTER 4
+#define SYSCONFIG1_H 0x14
   #define RDSIEN  0x80 // RDS interrupt enable (not supported)
   #define STCIEN  0x40 // Seek/Tune interrupt enable (not supplied by breakout board)
   #define RDS     0x10 // RDS enable (not supported)
   #define DE      0x08 // De-emphasis. 0 for USA, 1 for rest of world
   #define AGCD    0x04 // Automatic Gain Control disable
 
-#define SYSCONFIG1_L 0x09
+#define SYSCONFIG1_L 0x15
   // Stereo/mono blend
   #define BLENDADJ_0 0x00 // +0 dB
   #define BLENDADJ_1 0x40 // +6 dB
@@ -69,9 +142,10 @@ uint8_t SI4702_regs[32];
   #define GPIO1_HIGH 0x03 // Force high
   #define GPIO1_BITS GPIO1_HIGH
 
-#define SYSCONFIG2_H  0x0a
+// REGISTER 5
+#define SYSCONFIG2_H  0x16
   // bits 0:7 : seek threshold.
-#define SYSCONFIG2_L  0x0b
+#define SYSCONFIG2_L  0x17
   #define BAND_US_EU 0x00 // 87.5 - 108MHz (US / Europe / Australia)
   #define BAND_JP_WD 0x40 // 76 - 108 (Japan wide band)
   #define BAND_JP    0x80 // 76 - 89 MHz (japan)
@@ -84,7 +158,8 @@ uint8_t SI4702_regs[32];
   // bits 3:0 : Volume.
   #define VOLUME_BITS  0x0F
 
-#define SYSCONFIG3_H  0x0c
+// REGISTER 6
+#define SYSCONFIG3_H  0x18
   #define SMUTER_FASTEST   0x00 // Softmute attack/recovery rate
   #define SMUTER_FAST      0x40
   #define SMUTER_SLOW      0x80
@@ -99,53 +174,44 @@ uint8_t SI4702_regs[32];
   
   #define VOLEXT 0x01      // extended volume rage (output attenuates by 30 dB)
 
-#define Sa064cac5658c9d9727d83def8bfcdf26693db3bbYSCONFIG3_L   0x0d
+#define SYSCONFIG3_L   0x19
   #define SKSNR(x)  (x << 4) // Seek SNR threshold (0 = most stops, 7 = fewest stops)
   #define SKSNR_BITS 0xf0
   #define SKCNT(x)  (x)
   #define SKCNT_BITS  0x0f
 
-#define TEST1_H 0x0e
+
+// REGISTER 7
+#define TEST1_H 0x1a
   #define XOSCEN 0x80       // Crystal oscillator enable
   #define AHIZEN 0x40       // Audio High-Z enable
 
-#define TEST1_L 0x0f
+#define TEST1_L 0x1b
   // reserved
 
-#define TEST2_H 0x10    
+// REGISTER 8
+#define TEST2_H 0x1c    
   // reserved
-#define TEST2_L 0x11    
-  // reserved
-
-#define BOOTCONFIG_H 0x12
+#define TEST2_L 0x1d    
   // reserved
 
-#define BOOTCONFIG_L 0x13
+// REGISTER 9
+#define BOOTCONFIG_H 0x1e
   // reserved
 
-#define STATUS_RSSI_H 0x14
-  #define RDSR 0x80 // RDS ready
-  #define STC  0x40 // Seek/tune complete
-  #define SBFL 0x20 // Seek Fail / Band Limit
-  #define AFCRL 0x10 // AFC fail
-  #define RDSS 0x08 // RDS synchronized
-  
-  #define BLERA(x) ((x & 0x06) >> 1) // RDS block A errors
-  #define ST 0x01   // Stereo
+#define BOOTCONFIG_L 0x1f
+  // reserved
 
-#define STATUS_RSSI_L 0x15
-  // [0:7] : RSSI (REceived Signal Strength Indicator)
+static inline _Bool Read_SI4702()
+{
+  return Read_I2C_Raw(SI4702_ADDR, 32, SI4702_regs);
+}
 
-#define READ_CHANNEL_H 0x16
-  #define BLERB(x) ((x & 0xC0) >> 6) // RDS Block B errors
-  #define BLERC(x) ((x & 0x30) >> 4) // RDS Block C errors
-  #define BLERD(x) ((x & 0xc0) >> 2) // RDS block D erros
-  #define READ_CHANNEL_H_BITS 0x3 // ReadChannel[8:9]
+static inline _Bool Write_SI4702()
+{
+  return Write_I2C_Raw(SI4702_ADDR, 12, SI4702_regs + RELOCATED_REGISTER_2); 
+}
 
-#define READ_CHANNEL_L 0x17
-  // ReadChannel[7:0]
-
-_Bool Write_SI4702();
 void SI4702_SetFrequency_intern(uint16_t frequency) // Frequency in .1 MHz 
 {
   if ((SI4702_regs[SYSCONFIG2_L] & BAND_BITS) != BAND_US_EU)
@@ -164,8 +230,6 @@ void SI4702_SetFrequency_intern(uint16_t frequency) // Frequency in .1 MHz
 
   SI4702_regs[CHANNEL_L] = frequency & 0xff;
   SI4702_regs[CHANNEL_H] = ( SI4702_regs[CHANNEL_H] & (~CHANNEL_H_BITS) ) | (frequency >> 8);
-
-
 }
 
 uint16_t SI4702_GetFrequency()
@@ -231,84 +295,6 @@ uint8_t SI4702_GetVolume()
   return ret;
 }
 
-
-static inline void I2CWait()
-{
-  while (!(TWCR & _BV(TWINT)))
-    ; // Wait
-}
-
-// The SI4702 has a very weird I2C interface. All registers
-// are 16-bits wide (big endian), but for some bizarre reason
-// start at address 0x0A, then auto-increment to 0x0F, and then
-// wrap around to address 0
-
-_Bool Read_SI4702()
-{
-  uint8_t currentReg = 0x14; // 2 * 0x0a
-  _Bool success = 0;
-  
-  // Send START
-  TWCR = _BV(TWINT)| _BV(TWSTA) | _BV(TWEN);
-
-  I2CWait();
-
-  if ((TWSR & 0xF8) != 0x08)
-    goto error;
-  
-  // Send slave address, with read bit
-  TWDR = SI4702_ADDR | 1;
-
-  TWCR = _BV(TWEN) | _BV(TWINT);
-  I2CWait();
-
-  if ((TWSR & 0xf8) != 0x40)
-    goto error; // Not acked
-
-  do
-  {
-    TWCR = _BV(TWEN) | _BV(TWINT) | _BV(TWEA); // Clear TWINT to resume, send ack to indicate more data is requested
-    I2CWait();
-    if((TWSR & 0xf8) != 0x50)
-      goto error; // Not acked.
-
-    SI4702_regs[currentReg++] = TWDR; // Store data.
-   
-    if (currentReg == 32) // wrap around
-      currentReg = 0;
-
-  } while (currentReg != 0x13 ); // Ack the first 31 (!) bytes
-  
-  TWCR = _BV(TWEN) | _BV(TWINT); // Clear TWINT to resume, send nack 
-  I2CWait();
-
-  SI4702_regs[currentReg++] = TWDR;
-  
-  success = 1;
-  
-  goto stop;
-  
-error:
-stop:
-  TWCR = _BV(TWINT) | _BV(TWSTO) | _BV(TWEN); // Stop    
-  // Wait on STOP to clear
-  while ((TWCR & _BV(TWSTO)))
-    ;
-  
-  return success;
-}
-
-// Writing out the SI4072 registers is even more weird. According to the documentation,
-// writeout starts at the high byte of register 0x2, auto-increments up to 0xf, and
-// then wraps around to 0. However, address 8 and 9 may not be written...
-// Basicly, this means only addresses 0x2 through 0x7 are available for writing
-
-_Bool Write_SI4702()
-{
-  // Can use Write_I2C_Regs here, by supplying the MSB of register 2 as "register address"
-  return Write_I2C_Regs(SI4702_ADDR, SI4702_regs[4], 11, SI4702_regs + 5); // Send MSB of 2 as "register adddress" and 11 remaining data bytes.
-}
-
 void Init_SI4702()
 {
   // Disable I2C module
@@ -362,7 +348,8 @@ restart:
 
 void SI4702_PowerOn()
 {
-  Read_SI4702(); // Some registers may have shifted during takeoff
+  if (!Read_SI4702()) // Some registers may have shifted during takeoff
+    Init_SI4702();
   SI4702_regs[POWERCONFIG_H] = DSMUTE | DMUTE | MONO;
   SI4702_regs[POWERCONFIG_L] = ENABLE ;
 
