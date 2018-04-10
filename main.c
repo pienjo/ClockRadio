@@ -1132,7 +1132,7 @@ int main(void)
     if (updateScreen)
     {
       // Something happened, update display.
-      Renderer_Update_Main(mainMode, (eventToHandle & CLOCK_UPDATE) && (deviceMode == modeShowTime || deviceMode == modeShowRadio) );
+      Renderer_Update_Main(mainMode, (eventToHandle & CLOCK_UPDATE) && (deviceMode == modeShowTime ) );
     }
 
     if (eventToHandle & CLOCK_TICK)
