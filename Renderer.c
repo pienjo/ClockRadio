@@ -14,7 +14,7 @@ static uint16_t blinkMask = 0x0;
 
 static uint8_t blinkStatus = 0;
 
-static uint8_t previousContent[ 8 * 3 ];
+static uint8_t previousContent[ 8 * 4 ];
 
 static const struct AlarmSetting *alarm = 0;
 
@@ -300,10 +300,10 @@ static void __privateRender(const uint8_t secondaryMode)
       if (segmentDigits[j] & row_mask)
 	data[3] |= column_mask;
     
-    if (0 != memcmp(data, previousContent + i * 3, 3))
+    if (0 != memcmp(data, previousContent + i * 4, 4))
       SendRow(i, data);
       
-    memcpy(previousContent + i * 3, data, 3);
+    memcpy(previousContent + i * 4, data, 4);
   }
 
 }
