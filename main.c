@@ -227,14 +227,20 @@ void BeepOn()
   PORTC = PORTC & ~( _BV(PORTC2)); 
 }
 
-void RadioOn()
+_Bool RadioOn()
 {
+  if (radioIsOn)
+    return 1; // Already on.
+    
   if (beepIsOn)
   {
     BeepOff();
   }
   
-  SI4702_PowerOn();
+  if (!SI4702_PowerOn())
+  {
+    return 0; // Failed to start the radio
+  }
   
   SI4702_SetFrequency(TheGlobalSettings.radio.frequency);
   SI4702_SetVolume(TheGlobalSettings.radio.volume);
@@ -244,6 +250,7 @@ void RadioOn()
   
   PORTC = PORTC & ~( _BV(PORTC2)); 
   radioIsOn = 1;  
+  return 1;
 }
 
 void HandleEditUp(const uint8_t editMode, uint8_t *const editDigit, const uint8_t editMaxValue)
@@ -507,13 +514,16 @@ int main(void)
 	    napTimeout = 0;
 	    alarm2Timeout = 0;
 	    TheSleepTime = 0;
-	    if (TheGlobalSettings.alarm1.flags & ALARM_TYPE_RADIO)
+	    
+	    if (TheGlobalSettings.alarm1.flags & ALARM_TYPE_RADIO && RadioOn())
 	    {
-	      RadioOn();
+	      // Radio alarm, and radio could be started
+	      
 	      alarm1Timeout = ALARM_RADIO_TIMEOUT;
 	    }
 	    else
 	    {
+	      // Beep alarm, or failed to start radio
 	      BeepOn();
 	      alarm1Timeout = ALARM_BEEP_TIMEOUT;
 	    }
@@ -527,16 +537,18 @@ int main(void)
 	    alarm1Timeout = 0;
 	    TheSleepTime = 0;
 	    
-	    if (TheGlobalSettings.alarm2.flags & ALARM_TYPE_RADIO)
+	    if (TheGlobalSettings.alarm2.flags & ALARM_TYPE_RADIO && RadioOn())
 	    {
-	      RadioOn();
+	      // Radio alarm, and radio could be started
+	      
 	      alarm2Timeout = ALARM_RADIO_TIMEOUT;
 	    }
 	    else
 	    {
+	      // Beep alarm, or failed to start radio
 	      BeepOn();
 	      alarm2Timeout = ALARM_BEEP_TIMEOUT;
-	    }
+	    }	    
 	    
 	    newDeviceMode = modeAlarmFiring;
 	  }
@@ -585,8 +597,8 @@ int main(void)
 	    }
 	    else
 	    {
-	      RadioOn();
-	      newDeviceMode = modeShowRadio;
+	      if (RadioOn())
+		newDeviceMode = modeShowRadio;
 	    }
 	    break;
 	  }

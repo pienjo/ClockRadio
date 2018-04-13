@@ -5,6 +5,7 @@
 #include <util/delay.h>
 
 #define SI4702_ADDR 0x20
+#define SI4702_RECOVERY_ATTEMPTS 3
 
 // The SI4702 has bigendian registers, the AVR is little endian. 
 // Work around this by not addressing the registers as 16 bits - it's not really that useful
@@ -295,68 +296,66 @@ uint8_t SI4702_GetVolume()
   return ret;
 }
 
-void Init_SI4702()
+_Bool Init_SI4702()
 {
-  // Disable I2C module
-  _Bool i2cWasEnabled;
-  
-restart:
-
-  i2cWasEnabled = false;
-  if (TWCR & _BV(TWEN))
+  for(uint8_t attempt = 0; attempt < SI4702_RECOVERY_ATTEMPTS; ++attempt)
   {
-    i2cWasEnabled = true;
+    // Disable I2C module
     TWCR &= ~(_BV(TWEN));
-  }
 
-  PORTC &= ~(_BV(PORTC3)); // Clear port c3
-  DDRC |= _BV(PORTC3); // Port C3 (reset input of SI4702) to output
-  
-  _delay_us(500); 
-  // Clear port c4 (SDA)
-  PORTC &= ~(_BV(PORTC4));
-  
-  _delay_us(500);  // Si4702 datasheet: > 100 us
-  // assert C3 (SI4702 reset)
-  DDRC &= ~_BV(PORTC3); // use external pull-up to 3v3
-  
-  _delay_us(10); // Si4702 datasheet: > 30 ns
-  // Assert C4
-  PORTC |= _BV(PORTC4); 
-
-  _delay_us(10); // Si4702 datasheet: > 300 ns 
-
-  if(i2cWasEnabled)
-  {
-    TWCR |= _BV(TWEN); // enable I2C
-  }
-  
-  // Read current registers
-  if (!Read_SI4702())
-    goto restart;
+    PORTC &= ~(_BV(PORTC3)); // Clear port c3
+    DDRC |= _BV(PORTC3); // Port C3 (reset input of SI4702) to output
     
-  // Enable the oscillator
-  SI4702_regs[TEST1_H] |= XOSCEN;
-  // Writeout
-  if (!Write_SI4702())
-    goto restart;
+    _delay_us(500); 
+    // Clear port c4 (SDA)
+    PORTC &= ~(_BV(PORTC4));
+    
+    _delay_us(500);  // Si4702 datasheet: > 100 us
+    // assert C3 (SI4702 reset)
+    DDRC &= ~_BV(PORTC3); // use external pull-up to 3v3
+    
+    _delay_us(10); // Si4702 datasheet: > 30 ns
+    // Assert C4
+    PORTC |= _BV(PORTC4); 
 
-  _delay_ms(125); // Allow oscillator to settle
-  if (!Read_SI4702())
-    goto restart;
+    _delay_us(10); // Si4702 datasheet: > 300 ns 
+
+    TWCR |= _BV(TWEN); // enable I2C
+    
+    // Read current registers
+    if (!Read_SI4702())
+      continue;
+      
+    // Enable the oscillator
+    SI4702_regs[TEST1_H] |= XOSCEN;
+    // Writeout
+    if (!Write_SI4702())
+      continue;
+
+    _delay_ms(125); // Allow oscillator to settle
+    if (Read_SI4702())
+      return 1; // Success!
+  }
+  
+  return 0; // Error 
 }
 
-void SI4702_PowerOn()
+_Bool SI4702_PowerOn()
 {
   if (!Read_SI4702()) // Some registers may have shifted during takeoff
-    Init_SI4702();
+  {
+    if (!Init_SI4702()) // try to restart.
+      return 0; // Restart failed
+  }
+  
   SI4702_regs[POWERCONFIG_H] = DSMUTE | DMUTE | MONO;
   SI4702_regs[POWERCONFIG_L] = ENABLE ;
 
   SI4702_regs[SYSCONFIG1_H] |= DE;  // Use European  de-emphasis
   SI4702_regs[SYSCONFIG2_L]  = SPACE_100KHZ | BAND_US_EU;  // European spacing
   SI4702_SetSeekThreshold(20);
-  Write_SI4702();
+  
+  return Write_SI4702();
 }
 
 void SI4702_PowerOff()
