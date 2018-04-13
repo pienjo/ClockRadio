@@ -403,19 +403,28 @@ int main(void)
   struct AlarmSetting alarmBeingModified;
   _Bool adjustAlarm1 = false;
   
+  uint16_t clockEvents = 0;
+  uint16_t buttonEvents = 0;
+  struct longPressResult longPressEvent;
+  
+  longPressEvent.shortPress = 0;
+  longPressEvent.longPress = 0;
+  longPressEvent.repPress = 0;
+  
   while (1)
   {
-    uint16_t clockEvents = 0;
-    uint16_t buttonEvents = 0;
-    
     _Bool updateScreen = 0;
-
+    uint16_t acceptedEvents = 0;
     ATOMIC_BLOCK(ATOMIC_FORCEON)
     {
-      clockEvents = (event & (CLOCK_UPDATE | CLOCK_TICK)) ;
-      event &= ~(CLOCK_UPDATE | CLOCK_TICK);
+      acceptedEvents = event;
+      event = 0;
     }
     
+    GetLongPress(acceptedEvents, &longPressEvent);
+    clockEvents = (acceptedEvents & (CLOCK_UPDATE | CLOCK_TICK)) ;
+    buttonEvents |= (acceptedEvents & ~(CLOCK_UPDATE | CLOCK_TICK));
+      
     enum clockMode newDeviceMode = deviceMode;
 
     if (clockEvents & CLOCK_UPDATE)
@@ -548,13 +557,6 @@ int main(void)
     if (newDeviceMode == deviceMode)
     {
       // No timer-related changes, probe the keys
-      ATOMIC_BLOCK(ATOMIC_FORCEON)
-      {
-	buttonEvents = event;
-	event = 0;
-      }
-    
-      struct longPressResult longPressEvent = GetLongPress(buttonEvents);
       
       // Handle keypresses
       switch ( deviceMode )
@@ -946,6 +948,13 @@ int main(void)
 	  break;      
 	}
       }
+   
+      // Mark all button events as handled
+      
+      buttonEvents = 0;
+      longPressEvent.shortPress = 0;
+      longPressEvent.longPress = 0;
+      longPressEvent.repPress = 0;
     }      
     
     if (newDeviceMode != deviceMode)

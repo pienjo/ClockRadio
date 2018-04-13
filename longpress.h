@@ -8,7 +8,7 @@ struct longPressResult {
   uint8_t repPress;
 };
 
-struct longPressResult GetLongPress(const uint16_t events);
+void GetLongPress(const uint16_t events, struct longPressResult *result);
 void MarkLongPressHandled(const uint8_t mask);
 
 #endif

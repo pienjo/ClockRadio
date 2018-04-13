@@ -6,14 +6,8 @@
 
 static uint8_t state[8];
   
-struct longPressResult GetLongPress(const uint16_t events)
+void GetLongPress(const uint16_t events, struct longPressResult *result)
 {
-  struct longPressResult r;
-  
-  r.shortPress = 0;
-  r.longPress = 0;
-  r.repPress = 0;
-  
   // see if released
   
   const uint8_t releaseEvents = (events >> 8);
@@ -29,7 +23,7 @@ struct longPressResult GetLongPress(const uint16_t events)
     if (releaseEvents & mask)
     {
       if (state[idx] < LONGPRESS_TICKS)
-	r.shortPress |= mask;
+	result->shortPress |= mask;
 	
       state[idx] = 0;
     }  
@@ -46,18 +40,17 @@ struct longPressResult GetLongPress(const uint16_t events)
 	state[idx]++;
 	if (state[idx] == LONGPRESS_TICKS)
 	{
-	  r.longPress |= mask;
-	  r.repPress |= mask;
+	  result->longPress |= mask;
+	  result->repPress |= mask;
 	} else if (state[idx] == LONGPRESS_TICKS + REP_TICKS)
 	{
-	  r.repPress |= mask;
+	  result->repPress |= mask;
 	  state[idx] = LONGPRESS_TICKS;
 	}
       }
     } 
   }
   
-  return r;
 }
 
 void MarkLongPressHandled(const uint8_t handledMask)
