@@ -2,6 +2,8 @@
 #include <avr/io.h>
 #include <util/delay.h>
 
+#define I2C_RECOVERY_ATTEMPTS 5
+
 static void I2CWait()
 {
   while (!(TWCR & _BV(TWINT)))
@@ -45,20 +47,24 @@ static void _recovery()
   Init_I2C();
 }
 
-static _Bool _doStart( const uint8_t addr) {  
-retry:
-  
-  // Send START
-  TWCR = _BV(TWINT)| _BV(TWSTA) | _BV(TWEN);
+static _Bool _doStart( const uint8_t addr) 
+{  
 
-  I2CWait();
-
-  if ((TWSR & 0xF8) != 0x08) 
+  for (uint8_t attempt = 0; attempt < I2C_RECOVERY_ATTEMPTS; ++attempt)
   {
+    // Send START
+    TWCR = _BV(TWINT)| _BV(TWSTA) | _BV(TWEN);
+
+    I2CWait();
+
+    if ((TWSR & 0xF8) == 0x08) 
+    {
+      break;
+    }
+    
     _recovery();
-    goto retry;
   }
-  
+    
   TWDR= addr;  // Slave address
 
   TWCR = _BV(TWEN) | _BV(TWINT);
