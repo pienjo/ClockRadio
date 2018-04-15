@@ -49,14 +49,21 @@ void NormalizeHours(struct DateTime *timestamp)
   {
     // Underflow
     timestamp->day = BCDSub(timestamp->day, 0x1); 
-    timestamp->wday = (timestamp->wday - 1) % 7;
+    
+    --timestamp->wday;
+    if (timestamp->wday == 0)
+      timestamp->wday = 7;
+      
     timestamp->hour = BCDAdd(timestamp->hour, 0x24);
   }  
   
   if(timestamp->hour >= 0x24)
   {
     timestamp->day = BCDAdd(timestamp->day, 0x01);
-    timestamp->wday = (timestamp->wday + 1) % 7;
+    timestamp->wday ++;
+    if (timestamp->wday == 8)
+      timestamp->wday = 1;
+      
     timestamp->hour = BCDSub(timestamp->hour, 0x24); 
   }
   

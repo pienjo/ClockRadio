@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <avr/sleep.h>
 
-#include <simavr/avr/avr_mcu_section.h>
+#include <simavr/avr_mcu_section.h>
 #include "../Timefuncs.h"
 #include "../DateTime.h"
 #include "../BCDFuncs.h"
@@ -342,6 +342,36 @@ void Test_NormalizeHours()
       errorOccurred =1;
     }
     
+  }
+
+  // DOW tests
+  for (uint8_t dow = 1; dow < 8; ++ dow)
+  {
+    // forward
+    testTime.hour = 0x25;
+    testTime.wday = dow;
+    
+    NormalizeHours(&testTime);
+    uint8_t expect = (dow % 7) + 1;
+    if (testTime.wday != expect)
+    {
+      printf("DOW error: %" PRIu8" positive, expect %d got %d\n", dow, expect, testTime.wday);
+      errorOccurred =1;
+    }
+    else
+    {
+      // backward
+      testTime.hour = 0x99;
+      testTime.wday = dow;
+      
+      NormalizeHours(&testTime);
+      expect = ((dow + 5) %7 ) + 1;
+      if (testTime.wday != expect)
+      {
+	printf("DOW error: %" PRIu8" negative, expect %d got %d\n", dow, expect, testTime.wday);
+	errorOccurred =1;
+      }
+    }
   }
 }
 
