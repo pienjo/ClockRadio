@@ -124,9 +124,9 @@ _Bool Write_I2C_Regs(uint8_t addr, uint8_t reg, uint8_t amount, const uint8_t *p
   if (amount == 0)
     return 1;
     
-  _Bool success = 0;
+  _Bool success = _doStart(addr & 0xfe);
   
-  if (_doStart(addr & 0xfe))
+  if (success)
   {
     // Send register address
 
@@ -152,9 +152,9 @@ _Bool Write_I2C_Raw(uint8_t addr, uint8_t amount, const uint8_t *ptr)
   if (amount == 0)
     return 1;
     
-  _Bool success = 0;
+  _Bool success = _doStart(addr & 0xfe);
   
-  if (_doStart(addr & 0xfe))
+  if (success)
   {
     success = _Write_I2C_Bulk(amount, ptr);
   }
@@ -171,12 +171,14 @@ _Bool Read_I2C_Regs(uint8_t addr, uint8_t reg, uint8_t amount, uint8_t *ptr)
   if (amount == 0)
     return 0;
 
-  _Bool success = 0;
+  _Bool success = _doStart(addr & 0xfe); // slave, write in order to send register
   
-  if (!_doStart(addr & 0xfe)) // slave, write in order to send register
+  if (!success) 
   {
     goto error;
   }
+  
+  success = 0; // Until proven otherwise
   
   // Send register address
 
@@ -216,9 +218,9 @@ _Bool Read_I2C_Raw(uint8_t addr, uint8_t amount, uint8_t *ptr)
   if (amount == 0)
     return 0;
 
-  _Bool success = 0;
+  _Bool success = _doStart(addr | 1 );
   
-  if (_doStart(addr | 1 )) // slave, read
+  if (success) // slave, read
   {
     success = _Read_I2C_Bulk(amount, ptr);
   }
