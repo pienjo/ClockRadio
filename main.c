@@ -15,6 +15,7 @@
 
 #include <avr/interrupt.h>
 #include <avr/sleep.h>
+#include <avr/wdt.h>
 #include <util/atomic.h>
 
 struct DateTime TheDateTime;
@@ -342,10 +343,15 @@ void HandleCycleTime(uint8_t *time)
 
 int main(void)
 {
+  // Setup watchdog
+  wdt_enable(WDTO_4S);
+  
   // Enable output on PORT C2 (amplifier control) and C1 (beeper)
   DDRC |= _BV(PORTC2) | _BV(PORTC1);
   // Amplifier control is active low
   PORTC = PORTC | _BV(PORTC2);
+  
+  wdt_reset();
   
   InitializePanels(4);
   
@@ -420,6 +426,9 @@ int main(void)
   
   while (1)
   {
+    
+    wdt_reset();
+  
     _Bool updateScreen = 0;
     uint16_t acceptedEvents = 0;
     ATOMIC_BLOCK(ATOMIC_FORCEON)
