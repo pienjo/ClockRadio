@@ -318,7 +318,7 @@ _Bool Init_SI4702()
     // Assert C4
     PORTC |= _BV(PORTC4); 
 
-    _delay_us(10); // Si4702 datasheet: > 300 ns 
+    _delay_ms(10); // Si4702 datasheet: > 300 ns 
 
     TWCR |= _BV(TWEN); // enable I2C
     
@@ -342,11 +342,8 @@ _Bool Init_SI4702()
 
 _Bool SI4702_PowerOn()
 {
-  if (!Read_SI4702()) // Some registers may have shifted during takeoff
-  {
-    if (!Init_SI4702()) // try to restart.
-      return 0; // Restart failed
-  }
+  if (!Init_SI4702())
+    return 0; // Restart failed
   
   SI4702_regs[POWERCONFIG_H] = DSMUTE | DMUTE | MONO;
   SI4702_regs[POWERCONFIG_L] = ENABLE ;
