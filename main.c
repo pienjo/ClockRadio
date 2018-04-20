@@ -56,7 +56,8 @@ enum clockMode
   modeShowRadio_Volume,
   modeShowAlarm1,
   modeShowAlarm2,
-  modeAlarmFiring,
+  modeAlarmFiring_beep,
+  modeAlarmFiring_radio,
   modeAdjustYearTens,
   modeAdjustYearOnes,
   modeAdjustMonth,
@@ -513,7 +514,7 @@ int main(void)
 	      alarm2Timeout = 0;
 	      TheSleepTime = 0;
 	      napTimeout = ALARM_BEEP_TIMEOUT;
-	      newDeviceMode = modeAlarmFiring;
+	      newDeviceMode = modeAlarmFiring_beep;
 	    }
 	  }
 	  
@@ -529,15 +530,15 @@ int main(void)
 	      // Radio alarm, and radio could be started
 	      
 	      alarm1Timeout = ALARM_RADIO_TIMEOUT;
+	      newDeviceMode = modeAlarmFiring_radio;
 	    }
 	    else
 	    {
 	      // Beep alarm, or failed to start radio
 	      BeepOn();
 	      alarm1Timeout = ALARM_BEEP_TIMEOUT;
+	      newDeviceMode = modeAlarmFiring_beep;
 	    }
-	    
-	    newDeviceMode = modeAlarmFiring;
 	  }
 	  
 	  if ( alarm2Scheduled && AlarmTriggered(&TheGlobalSettings.alarm2))
@@ -551,15 +552,16 @@ int main(void)
 	      // Radio alarm, and radio could be started
 	      
 	      alarm2Timeout = ALARM_RADIO_TIMEOUT;
+	      newDeviceMode = modeAlarmFiring_radio;
 	    }
 	    else
 	    {
 	      // Beep alarm, or failed to start radio
 	      BeepOn();
 	      alarm2Timeout = ALARM_BEEP_TIMEOUT;
+	       newDeviceMode = modeAlarmFiring_beep;
 	    }	    
 	    
-	    newDeviceMode = modeAlarmFiring;
 	  }
 	  SetBrightness(GetActiveBrightness(&TheDateTime));
         }	
@@ -777,7 +779,8 @@ int main(void)
 	      newDeviceMode = modeShowTime;
 	  }
 	  break;
-	case modeAlarmFiring:
+	case modeAlarmFiring_beep:
+	case modeAlarmFiring_radio:
 	  {
 	    if (buttonEvents & (BUTTON1_CLICK | BUTTON2_CLICK | BUTTON3_CLICK | BUTTON4_CLICK | BUTTON5_CLICK))
 	    {
@@ -1046,6 +1049,7 @@ int main(void)
           break;
         case modeShowTime:
 	  modeTimeout = 0;
+	  Renderer_SetInverted(NOT_INVERTED);
 	  Renderer_SetFlashMask(0);
 	  timePollAllowed = 1;
 	  editMode = 0;	  
@@ -1073,9 +1077,19 @@ int main(void)
 	  secMode = SECONDARY_MODE_VOLUME;
 	  Renderer_Update_Secondary();
 	  break;
-	case modeAlarmFiring:
+	case modeAlarmFiring_beep:
 	  modeTimeout = 0;
+	  Renderer_SetInverted(NOT_INVERTED);
 	  Renderer_SetFlashMask(0xff);
+	  timePollAllowed = 1;
+	  editMode = 0;	  
+	  secMode = SECONDARY_MODE_SEC;
+	  mainMode = MAIN_MODE_TIME;
+          break;
+       case modeAlarmFiring_radio:
+	  modeTimeout = 0;
+	  Renderer_SetInverted(INVERTED);
+	  Renderer_SetFlashMask(0x0);
 	  timePollAllowed = 1;
 	  editMode = 0;	  
 	  secMode = SECONDARY_MODE_SEC;
