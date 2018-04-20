@@ -15,6 +15,7 @@ static uint16_t blinkMask = 0x0;
 static uint8_t blinkStatus = 0;
 
 static uint8_t previousContent[ 8 * 4 ];
+static uint8_t invertionMode = NOT_INVERTED;
 
 static const struct AlarmSetting *alarm = 0;
 
@@ -300,6 +301,13 @@ static void __privateRender(const uint8_t secondaryMode)
       if (segmentDigits[j] & row_mask)
 	data[3] |= column_mask;
     
+    if (invertionMode == INVERTED)
+    {
+      data[0] = ~data[0];
+      data[1] = ~data[1];
+      data[2] = ~data[2];
+    }
+    
     if (0 != memcmp(data, previousContent + i * 4, 4))
       SendRow(i, data);
       
@@ -376,4 +384,10 @@ void Renderer_Update_Main(const uint8_t mainMode,const _Bool animate)
 void Renderer_SetFlashMask(const uint16_t mask)
 {
   blinkMask = mask; 
+}
+
+
+void Renderer_SetInverted(const enum enumInvertionMode newInvertionMode)
+{
+  invertionMode = (uint8_t) newInvertionMode;
 }

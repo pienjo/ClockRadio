@@ -45,5 +45,14 @@ void Renderer_Update_Secondary();
 
 // Set which digits should be flashing. bit 7 = leftmost digit, bit 0 = rightmost digit. bit 8 = day indicator
 void Renderer_SetFlashMask(const uint16_t mask);
+
+enum enumInvertionMode
+{
+  NOT_INVERTED = 0,
+  INVERTED = 1,
+};
+
+void Renderer_SetInverted(const enum enumInvertionMode invertionMode);
+
 #endif
 
