@@ -15,7 +15,7 @@ struct AlarmSetting
   //        00 : Repeat daily (mon-sun)
   //        01 : Repeat on weekdays
   //        10 : Repeat on weekend
-  //        11 : Do not repeat.
+  //        11 : Do not repeat. ( used for temporary alarm only)
   // bit 4: Next invocation of alarm is suspended
   
   #define ALARM_SUSPENDED 0x10
@@ -42,7 +42,8 @@ struct GlobalSettings
   uint8_t              brightness;
   uint8_t              brightness_night;
   struct AlarmSetting  alarm1, 
-                       alarm2;
+                       alarm2,
+		       onetime_alarm;
 };
 
 extern struct GlobalSettings TheGlobalSettings;

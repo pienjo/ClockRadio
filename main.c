@@ -56,6 +56,7 @@ enum clockMode
   modeShowRadio_Volume,
   modeShowAlarm1,
   modeShowAlarm2,
+  modeShowOnetimeAlarm,
   modeAlarmFiring_beep,
   modeAlarmFiring_radio,
   modeAdjustYearTens,
@@ -312,9 +313,10 @@ void HandleEditDown(const uint8_t editMode, uint8_t *const editDigit, const uint
 
 uint8_t alarm1Timeout = 0; // minutes
 uint8_t alarm2Timeout = 0; // minutes
+uint8_t onetimeAlarmTimeout = 0; // minutes
 uint8_t napTimeout = 0; // minutes
 
-enum enumAlarmScheduleState alarm1Scheduled = NOT_SCHEDULED, alarm2Scheduled = NOT_SCHEDULED;
+enum enumAlarmScheduleState alarm1Scheduled = NOT_SCHEDULED, alarm2Scheduled = NOT_SCHEDULED, onetimeAlarmScheduled = NOT_SCHEDULED;
 
 void SilenceAlarm(struct AlarmSetting *alarm)
 {
@@ -388,6 +390,10 @@ int main(void)
     TheGlobalSettings.alarm2.hour = 9;
     TheGlobalSettings.alarm2.min = 0x15; 
     
+    TheGlobalSettings.onetime_alarm.flags = ALARM_DAY_NEVER; // Never repeat, disabled
+    TheGlobalSettings.onetime_alarm.hour = 6;
+    TheGlobalSettings.onetime_alarm.min = 0x45;
+    
     TheGlobalSettings.brightness = 13;
     TheGlobalSettings.brightness_night = 3; 
     WriteGlobalSettings();
@@ -427,7 +433,7 @@ int main(void)
   sei(); // Enable interrupts. This will immediately trigger a port change interrupt; sink these events.
   
   struct AlarmSetting alarmBeingModified;
-  _Bool adjustAlarm1 = false;
+  enum clockMode alarmAdjustReturnMode = 0;
   
   uint16_t clockEvents = 0;
   uint16_t buttonEvents = 0;
@@ -495,6 +501,13 @@ int main(void)
 	      SilenceAlarm(&TheGlobalSettings.alarm2);
 	  }
 	  
+	  if (onetimeAlarmTimeout)
+	  {
+	    onetimeAlarmTimeout--;
+	    if (!onetimeAlarmTimeout)
+	      SilenceAlarm(&TheGlobalSettings.onetime_alarm);
+	  }
+	  
 	  if (TheSleepTime && deviceMode != modeAdjustSleep)
 	  {
 	    TheSleepTime--;
@@ -541,9 +554,10 @@ int main(void)
 	      {
 		napTimeout = 0;
 		alarm2Timeout = 0;
+		onetimeAlarmTimeout = 0;
 		TheSleepTime = 0;
 		
-		if (TheGlobalSettings.alarm1.flags & ALARM_TYPE_RADIO && RadioOn())
+		if ((TheGlobalSettings.alarm1.flags & ALARM_TYPE_RADIO) && RadioOn())
 		{
 		  // Radio alarm, and radio could be started
 		  
@@ -577,9 +591,10 @@ int main(void)
 	      {
 		napTimeout = 0;
 		alarm1Timeout = 0;
+		onetimeAlarmTimeout = 0;
 		TheSleepTime = 0;
 		
-		if (TheGlobalSettings.alarm2.flags & ALARM_TYPE_RADIO && RadioOn())
+		if ((TheGlobalSettings.alarm2.flags & ALARM_TYPE_RADIO) && RadioOn())
 		{
 		  // Radio alarm, and radio could be started
 		  
@@ -603,6 +618,29 @@ int main(void)
 	      }
 	      break;
 	  }
+	  
+	  if(onetimeAlarmScheduled == SCHEDULED && AlarmTriggered(&TheGlobalSettings.onetime_alarm))
+	  {
+	    napTimeout = 0;
+	    alarm1Timeout = 0;
+	    alarm2Timeout = 0;
+	    TheSleepTime = 0;
+	    
+	    if ((TheGlobalSettings.onetime_alarm.flags & ALARM_TYPE_RADIO) && RadioOn())
+	    {
+	      // Radio alarm, and radio could be started
+	      
+	      onetimeAlarmTimeout = ALARM_RADIO_TIMEOUT;
+	      newDeviceMode = modeAlarmFiring_radio;
+	    }
+	    else
+	    {
+	      // Beep alarm, or failed to start radio
+	      BeepOn();
+	      onetimeAlarmTimeout = ALARM_BEEP_TIMEOUT;
+	      newDeviceMode = modeAlarmFiring_beep;
+	    }
+	  }
 	  SetBrightness(GetActiveBrightness(&TheDateTime));
         }	
 	ThePreviousDateTime = TheDateTime;
@@ -611,8 +649,9 @@ int main(void)
 	{
 	  alarm1Scheduled = IsAlarmScheduled(&TheGlobalSettings.alarm1);
 	  alarm2Scheduled = IsAlarmScheduled(&TheGlobalSettings.alarm2);
+	  onetimeAlarmScheduled = IsAlarmScheduled(&TheGlobalSettings.onetime_alarm);
 	  
-	  Renderer_SetLed(TheNapTime > 0 ? LED_ON : LED_OFF, alarm1Scheduled,  alarm2Scheduled, TheSleepTime > 0 ? LED_ON : TheSleepTime > 0 ? LED_ON : LED_OFF);
+	  Renderer_SetLed((TheNapTime + TheSleepTime) > 0 ? LED_ON : LED_OFF, alarm1Scheduled,  alarm2Scheduled, onetimeAlarmScheduled);
 	}
       }
     }
@@ -762,14 +801,14 @@ int main(void)
 	  {
 	    modeTimeout = SHOW_ALARM_TIMEOUT;
 	    TheGlobalSettings.alarm1.flags ^= ALARM_ACTIVE;
-	    Renderer_SetLed((TheNapTime > 0) ? LED_ON : LED_OFF, (TheGlobalSettings.alarm1.flags & ALARM_ACTIVE) ? LED_BLINK_LONG : LED_BLINK_SHORT, IsAlarmScheduled( &TheGlobalSettings.alarm2) ? LED_ON : LED_OFF, (TheSleepTime > 0) ? LED_ON : LED_OFF);	
+	    Renderer_SetLed(((TheNapTime + TheSleepTime) > 0) ? LED_ON : LED_OFF, (TheGlobalSettings.alarm1.flags & ALARM_ACTIVE) ? LED_BLINK_LONG : LED_BLINK_SHORT, alarm2Scheduled, onetimeAlarmScheduled );	
 	  }
 	  
 	  if (longPressEvent.longPress & BUTTON1_CLICK)
 	  {
 	    // adjust alarm
 	    alarmBeingModified = TheGlobalSettings.alarm1;
-	    adjustAlarm1 = 1;
+	    alarmAdjustReturnMode = modeShowAlarm1;
 	    newDeviceMode = modeAdjustHoursTens_Alarm;
 	    
 	  } else if (longPressEvent.shortPress & BUTTON1_CLICK)
@@ -794,24 +833,19 @@ int main(void)
 	  {
 	    modeTimeout = SHOW_ALARM_TIMEOUT;
 	    TheGlobalSettings.alarm2.flags ^= ALARM_ACTIVE;
-	    Renderer_SetLed( (TheNapTime > 0 )? LED_ON : LED_OFF, IsAlarmScheduled( &TheGlobalSettings.alarm1) ? LED_ON : LED_OFF, (TheGlobalSettings.alarm2.flags & ALARM_ACTIVE )? LED_BLINK_LONG : LED_BLINK_SHORT, (TheSleepTime > 0) ? LED_ON : LED_OFF);
+	    Renderer_SetLed( ((TheNapTime + TheSleepTime) > 0 )? LED_ON : LED_OFF, alarm1Scheduled, (TheGlobalSettings.alarm2.flags & ALARM_ACTIVE )? LED_BLINK_LONG : LED_BLINK_SHORT, onetimeAlarmScheduled);
 	  }
 	  
 	  if (longPressEvent.longPress & BUTTON1_CLICK)
 	  {
 	    // adjust alarm
 	    alarmBeingModified = TheGlobalSettings.alarm2;
-	    adjustAlarm1 = 0;
+	    alarmAdjustReturnMode = modeShowAlarm2;
 	    newDeviceMode = modeAdjustHoursTens_Alarm;
 	    
 	  } else if (longPressEvent.shortPress & BUTTON1_CLICK)
 	  {
-	    if (radioIsOn)
-	    {
-	      newDeviceMode = modeShowRadio;
-	    }
-	    else
-	      newDeviceMode = modeShowTime;
+	    newDeviceMode = modeShowOnetimeAlarm;
 	  }
 	  
 	  if (alarm2Scheduled != NOT_SCHEDULED)
@@ -823,6 +857,31 @@ int main(void)
 	      modeTimeout = SHOW_ALARM_TIMEOUT;
 	      Renderer_Update_Secondary();
 	    }
+	  }
+	  break;
+	case modeShowOnetimeAlarm:
+	  if ( buttonEvents & BUTTON2_CLICK )
+	  {
+	    modeTimeout = SHOW_ALARM_TIMEOUT;
+	    TheGlobalSettings.onetime_alarm.flags ^= ALARM_ACTIVE;
+	    Renderer_SetLed( ((TheNapTime + TheSleepTime) > 0 )? LED_ON : LED_OFF, alarm1Scheduled, alarm2Scheduled, (TheGlobalSettings.onetime_alarm.flags & ALARM_ACTIVE )? LED_BLINK_LONG : LED_BLINK_SHORT);
+	  }
+	  
+	  if (longPressEvent.longPress & BUTTON1_CLICK)
+	  {
+	    // adjust alarm
+	    alarmBeingModified = TheGlobalSettings.onetime_alarm;
+	    alarmAdjustReturnMode = modeShowOnetimeAlarm;
+	    newDeviceMode = modeAdjustHoursTens_Alarm;
+	    
+	  } else if (longPressEvent.shortPress & BUTTON1_CLICK)
+	  {
+	    if (radioIsOn)
+	    {
+	      newDeviceMode = modeShowRadio;
+	    }
+	    else
+	      newDeviceMode = modeShowTime;
 	  }
 	  break;
 	case modeAlarmFiring_beep:
@@ -837,28 +896,28 @@ int main(void)
 	      }
 	      else
 	      {
-		// Consume one alarm.
-		_Bool silenceAlarm1 = (alarm1Timeout);
-		
-		if (alarm1Timeout && alarm2Timeout)
+		// Silence all alarms
+		if (alarm1Timeout)
 		{
-		  // Both alarms are active: Kill the annoying one.
-		  silenceAlarm1 = (TheGlobalSettings.alarm2.flags & ALARM_TYPE_RADIO); // Alarm 2 is a radio, so kill alarm1. Otherwise, kill alarm2.
-		}
-		
-		if (silenceAlarm1)
-		{
-		  alarm1Timeout = 0;
 		  SilenceAlarm(&TheGlobalSettings.alarm1);
+		  alarm1Timeout = 0;
 		}
-		else
+		
+		if (alarm2Timeout)
 		{
-		  alarm2Timeout = 0;
 		  SilenceAlarm(&TheGlobalSettings.alarm2);
+		  alarm2Timeout = 0;
 		}
+		
+		if (onetimeAlarmTimeout)
+		{
+		  SilenceAlarm(&TheGlobalSettings.onetime_alarm);
+		  onetimeAlarmTimeout = 0;
+		}
+
 	      }
 	    }
-	    if (!alarm1Timeout && !alarm2Timeout && !napTimeout) 
+	    if (!alarm1Timeout && !alarm2Timeout && !napTimeout && !onetimeAlarmTimeout) 
 	    {
 	      MarkLongPressHandled(buttonEvents); // don't generate shortpresses. 
 	      newDeviceMode = modeShowTime;
@@ -918,10 +977,14 @@ int main(void)
 	  if (longPressEvent.longPress & BUTTON1_CLICK)
 	  {
 	    // Abort adjusting alarm
-	    newDeviceMode = adjustAlarm1 ? modeShowAlarm1 : modeShowAlarm2;
+	    newDeviceMode = alarmAdjustReturnMode;
 	  } else if (longPressEvent.shortPress & BUTTON1_CLICK)
 	  {
 	    newDeviceMode++;
+	    if (newDeviceMode == modeAdjustDays_Alarm && alarmAdjustReturnMode == modeShowOnetimeAlarm)
+	    {
+	      newDeviceMode = modeAdjustType_Alarm; // Skip day selection for one-time alarm.
+	    }
 	  }
 	  else if (buttonEvents & BUTTON3_CLICK)
 	  {
@@ -940,7 +1003,7 @@ int main(void)
 	  if (longPressEvent.longPress & BUTTON1_CLICK)
 	  {
 	    // Abort adjusting alarm
-	    newDeviceMode = adjustAlarm1 ? modeShowAlarm1 : modeShowAlarm2;
+	    newDeviceMode = alarmAdjustReturnMode;
 	  } else if (longPressEvent.shortPress & BUTTON1_CLICK)
 	  {
 	    newDeviceMode++;
@@ -949,6 +1012,9 @@ int main(void)
 	  {
 	    updateScreen = 1;
 	    uint8_t newDays = (alarmBeingModified.flags - 4 ) & ALARM_DAY_BITS;
+	    if (newDays == ALARM_DAY_NEVER)
+	      newDays = ALARM_DAY_WEEKEND;
+	      
 	    alarmBeingModified.flags &= ~ALARM_DAY_BITS;
 	    alarmBeingModified.flags |= newDays;
 	  }
@@ -956,6 +1022,9 @@ int main(void)
 	  {
 	    updateScreen = 1;
 	    uint8_t newDays = (alarmBeingModified.flags + 4 ) & ALARM_DAY_BITS;
+   	    if (newDays == ALARM_DAY_NEVER)
+	      newDays = ALARM_DAY_DAILY;
+
 	    alarmBeingModified.flags &= ~ALARM_DAY_BITS;
 	    alarmBeingModified.flags |= newDays;
 	  }
@@ -966,19 +1035,24 @@ int main(void)
 	  if (longPressEvent.longPress & BUTTON1_CLICK)
 	  {
 	    // Abort adjusting alarm
-	    newDeviceMode = adjustAlarm1 ? modeShowAlarm1 : modeShowAlarm2;
+	    newDeviceMode = alarmAdjustReturnMode;
 	  } else if (longPressEvent.shortPress & BUTTON1_CLICK)
 	  {
-	    if (adjustAlarm1)
+	    switch(alarmAdjustReturnMode)
 	    {
-	      TheGlobalSettings.alarm1 = alarmBeingModified;
-	      newDeviceMode = modeShowAlarm1;
+	      case modeShowAlarm1:
+		TheGlobalSettings.alarm1 = alarmBeingModified;
+		break;
+	      case modeShowAlarm2:
+		TheGlobalSettings.alarm2 = alarmBeingModified;
+		break;
+	      case modeShowOnetimeAlarm:
+		TheGlobalSettings.onetime_alarm = alarmBeingModified;
+	      default:
+		break;	      
 	    }
-	    else
-	    {
-	      TheGlobalSettings.alarm2 = alarmBeingModified;
-	      newDeviceMode = modeShowAlarm2;
-	    }
+	   
+	    newDeviceMode = alarmAdjustReturnMode;
 	      
 	    MarkLongPressHandled(BUTTON1_CLICK);
 	    writeSettingTimeout = 5;
@@ -1149,7 +1223,7 @@ int main(void)
 	  mainMode = MAIN_MODE_ALARM;
 	  secMode = SECONDARY_MODE_ALARM;
 	  Renderer_SetAlarmStruct(&TheGlobalSettings.alarm1);
-	  Renderer_SetLed((TheNapTime > 0 ) ? LED_ON : LED_OFF, (TheGlobalSettings.alarm1.flags & ALARM_ACTIVE) ? LED_BLINK_LONG : LED_BLINK_SHORT, IsAlarmScheduled( &TheGlobalSettings.alarm2) ? LED_ON : LED_OFF, (TheSleepTime > 0 ) ? LED_ON : LED_OFF);
+	  Renderer_SetLed((TheNapTime + TheSleepTime > 0 ) ? LED_ON : LED_OFF, (TheGlobalSettings.alarm1.flags & ALARM_ACTIVE) ? LED_BLINK_LONG : LED_BLINK_SHORT, alarm2Scheduled, onetimeAlarmScheduled);
 	  Renderer_Update_Secondary();
 	  break;
 	}
@@ -1160,8 +1234,17 @@ int main(void)
 	  mainMode = MAIN_MODE_ALARM;
 	  secMode = SECONDARY_MODE_ALARM;
 	  Renderer_SetAlarmStruct(&TheGlobalSettings.alarm2);
-	  Renderer_SetLed((TheNapTime > 0 ) ? LED_ON : LED_OFF, IsAlarmScheduled( &TheGlobalSettings.alarm1) ? LED_ON : LED_OFF, (TheGlobalSettings.alarm2.flags & ALARM_ACTIVE) ? LED_BLINK_LONG : LED_BLINK_SHORT, (TheSleepTime > 0) ? LED_ON : LED_OFF);
-	  
+	  Renderer_SetLed((TheNapTime + TheSleepTime > 0 ) ? LED_ON : LED_OFF, alarm1Scheduled, (TheGlobalSettings.alarm2.flags & ALARM_ACTIVE) ? LED_BLINK_LONG : LED_BLINK_SHORT, onetimeAlarmScheduled);
+	  Renderer_Update_Secondary();
+	  break;
+	case modeShowOnetimeAlarm:
+	  Renderer_SetFlashMask(0x00); 
+	  timePollAllowed = 1;
+	  modeTimeout = SHOW_ALARM_TIMEOUT;
+	  mainMode = MAIN_MODE_ALARM;
+	  secMode = SECONDARY_MODE_ALARM;
+	  Renderer_SetAlarmStruct(&TheGlobalSettings.onetime_alarm);
+	  Renderer_SetLed((TheNapTime + TheSleepTime > 0 ) ? LED_ON : LED_OFF, alarm1Scheduled, alarm2Scheduled, (TheGlobalSettings.onetime_alarm.flags & ALARM_ACTIVE) ? LED_BLINK_LONG : LED_BLINK_SHORT);
 	  Renderer_Update_Secondary();
 	  break;
 	case modeAdjustHoursTens_Alarm:
@@ -1204,7 +1287,7 @@ int main(void)
 	  modeTimeout = SHOW_ALARM_TIMEOUT; 
 	  mainMode = MAIN_MODE_NAP;
 	  secMode = SECONDARY_MODE_NAP;
-	  Renderer_SetLed(LED_BLINK_SHORT, alarm1Scheduled ? LED_ON : LED_OFF,  alarm2Scheduled ? LED_ON : LED_OFF, TheSleepTime > 0 ? LED_ON : TheSleepTime > 0 ? LED_ON : LED_OFF);
+	  Renderer_SetLed(LED_BLINK_SHORT, alarm1Scheduled,  alarm2Scheduled, onetimeAlarmScheduled);
 	  break;
 	case modeAdjustSleep:
 	  if (TheSleepTime == 0)
@@ -1212,7 +1295,7 @@ int main(void)
 	  modeTimeout = SHOW_ALARM_TIMEOUT; 
 	  mainMode = MAIN_MODE_SLEEP;
 	  secMode = SECONDARY_MODE_SLEEP;
-	  Renderer_SetLed(TheNapTime > 0 ? LED_ON : LED_OFF, alarm1Scheduled ? LED_ON : LED_OFF,  alarm2Scheduled ? LED_ON : LED_OFF, LED_BLINK_SHORT);
+	  Renderer_SetLed(LED_BLINK_SHORT, alarm1Scheduled,  alarm2Scheduled, onetimeAlarmScheduled);
 	  break;
         default:
 	
