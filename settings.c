@@ -25,7 +25,13 @@ _Bool ReadGlobalSettings()
   
   Read_DS1307_RAM((uint8_t *) &TheGlobalSettings, 1, sizeof(struct GlobalSettings));
   
-  return checksum == CalculateCRC();
+  _Bool checksumOK = (checksum == CalculateCRC());
+  
+  // Remove any suspend flags
+  TheGlobalSettings.alarm1.flags &= ~(ALARM_SUSPENDED);
+  TheGlobalSettings.alarm2.flags &= ~(ALARM_SUSPENDED);
+  
+  return checksumOK;
 }
 
 void WriteGlobalSettings()

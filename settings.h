@@ -16,7 +16,9 @@ struct AlarmSetting
   //        01 : Repeat on weekdays
   //        10 : Repeat on weekend
   //        11 : Do not repeat.
+  // bit 4: Next invocation of alarm is suspended
   
+  #define ALARM_SUSPENDED 0x10
   #define ALARM_DAY_DAILY 0
   #define ALARM_DAY_WEEK  4
   #define ALARM_DAY_WEEKEND 8

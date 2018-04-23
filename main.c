@@ -159,10 +159,16 @@ static inline _Bool IsPastAlarmTime(const struct AlarmSetting *alarm, const stru
   return (timestamp->hour > alarm->hour) || (timestamp->hour == alarm->hour && timestamp->min >= alarm->min);
 }
 
-_Bool IsAlarmScheduled(struct AlarmSetting *alarm)
+enum enumAlarmScheduleState {
+  NOT_SCHEDULED = LED_OFF,          // Alarm is not scheduled for the next 24 hours
+  SCHEDULED = LED_ON,     	    // Alarm is scheduled
+  SUSPENDED = LED_BLINK_SHORT,      // Alarm would've been scheduled, but the next invocation is suspended
+};
+
+enum enumAlarmScheduleState IsAlarmScheduled(struct AlarmSetting *alarm)
 {
   if ((alarm->flags & ALARM_ACTIVE) == 0)
-    return 0;
+    return NOT_SCHEDULED;
   
   uint8_t dayBits = 0xff; // bit 0 = monday, bit 1 = tuesday ... bit 7 is monday again, to handle wraparound.
   
@@ -190,7 +196,13 @@ _Bool IsAlarmScheduled(struct AlarmSetting *alarm)
   }
     
   // Check if day matches
-  return dayBits & (1 << nextAlarmDay);
+  if (! ( dayBits & (1 << nextAlarmDay)))
+    return NOT_SCHEDULED;
+    
+  if ((alarm->flags & ALARM_SUSPENDED) == 0)
+    return SCHEDULED;
+  else
+    return SUSPENDED;
 }
 
 void BeepOff()
@@ -302,7 +314,7 @@ uint8_t alarm1Timeout = 0; // minutes
 uint8_t alarm2Timeout = 0; // minutes
 uint8_t napTimeout = 0; // minutes
 
-_Bool alarm1Scheduled = 0, alarm2Scheduled = 0;
+enum enumAlarmScheduleState alarm1Scheduled = NOT_SCHEDULED, alarm2Scheduled = NOT_SCHEDULED;
 
 void SilenceAlarm(struct AlarmSetting *alarm)
 {
@@ -519,49 +531,77 @@ int main(void)
 	  }
 	  
 	  // See if alarms must fire.
-	  if (alarm1Scheduled && AlarmTriggered(&TheGlobalSettings.alarm1))
+	  
+	  switch(alarm1Scheduled)
 	  {
-	    napTimeout = 0;
-	    alarm2Timeout = 0;
-	    TheSleepTime = 0;
-	    
-	    if (TheGlobalSettings.alarm1.flags & ALARM_TYPE_RADIO && RadioOn())
-	    {
-	      // Radio alarm, and radio could be started
-	      
-	      alarm1Timeout = ALARM_RADIO_TIMEOUT;
-	      newDeviceMode = modeAlarmFiring_radio;
-	    }
-	    else
-	    {
-	      // Beep alarm, or failed to start radio
-	      BeepOn();
-	      alarm1Timeout = ALARM_BEEP_TIMEOUT;
-	      newDeviceMode = modeAlarmFiring_beep;
-	    }
+	    case NOT_SCHEDULED:
+	      break;
+	    case SCHEDULED:
+	      if (AlarmTriggered(&TheGlobalSettings.alarm1))
+	      {
+		napTimeout = 0;
+		alarm2Timeout = 0;
+		TheSleepTime = 0;
+		
+		if (TheGlobalSettings.alarm1.flags & ALARM_TYPE_RADIO && RadioOn())
+		{
+		  // Radio alarm, and radio could be started
+		  
+		  alarm1Timeout = ALARM_RADIO_TIMEOUT;
+		  newDeviceMode = modeAlarmFiring_radio;
+		}
+		else
+		{
+		  // Beep alarm, or failed to start radio
+		  BeepOn();
+		  alarm1Timeout = ALARM_BEEP_TIMEOUT;
+		  newDeviceMode = modeAlarmFiring_beep;
+		}
+	      }
+	      break;
+	    case SUSPENDED:
+	      if (AlarmTriggered(&TheGlobalSettings.alarm1))
+	      {
+		// Remove suspend state
+		TheGlobalSettings.alarm1.flags &= ~(ALARM_SUSPENDED);
+	      }
+	      break;
 	  }
 	  
-	  if ( alarm2Scheduled && AlarmTriggered(&TheGlobalSettings.alarm2))
+	  switch(alarm2Scheduled)
 	  {
-	    napTimeout = 0;
-	    alarm1Timeout = 0;
-	    TheSleepTime = 0;
-	    
-	    if (TheGlobalSettings.alarm2.flags & ALARM_TYPE_RADIO && RadioOn())
-	    {
-	      // Radio alarm, and radio could be started
-	      
-	      alarm2Timeout = ALARM_RADIO_TIMEOUT;
-	      newDeviceMode = modeAlarmFiring_radio;
-	    }
-	    else
-	    {
-	      // Beep alarm, or failed to start radio
-	      BeepOn();
-	      alarm2Timeout = ALARM_BEEP_TIMEOUT;
-	       newDeviceMode = modeAlarmFiring_beep;
-	    }	    
-	    
+	    case NOT_SCHEDULED:
+	      break;
+	    case SCHEDULED:
+	      if (AlarmTriggered(&TheGlobalSettings.alarm2))
+	      {
+		napTimeout = 0;
+		alarm1Timeout = 0;
+		TheSleepTime = 0;
+		
+		if (TheGlobalSettings.alarm2.flags & ALARM_TYPE_RADIO && RadioOn())
+		{
+		  // Radio alarm, and radio could be started
+		  
+		  alarm2Timeout = ALARM_RADIO_TIMEOUT;
+		  newDeviceMode = modeAlarmFiring_radio;
+		}
+		else
+		{
+		  // Beep alarm, or failed to start radio
+		  BeepOn();
+		  alarm2Timeout = ALARM_BEEP_TIMEOUT;
+		  newDeviceMode = modeAlarmFiring_beep;
+		}
+	      }
+	      break;
+	    case SUSPENDED:
+	      if (AlarmTriggered(&TheGlobalSettings.alarm2))
+	      {
+		// Remove suspend state
+		TheGlobalSettings.alarm2.flags &= ~(ALARM_SUSPENDED);
+	      }
+	      break;
 	  }
 	  SetBrightness(GetActiveBrightness(&TheDateTime));
         }	
@@ -572,7 +612,7 @@ int main(void)
 	  alarm1Scheduled = IsAlarmScheduled(&TheGlobalSettings.alarm1);
 	  alarm2Scheduled = IsAlarmScheduled(&TheGlobalSettings.alarm2);
 	  
-	  Renderer_SetLed(TheNapTime > 0 ? LED_ON : LED_OFF, alarm1Scheduled ? LED_ON : LED_OFF,  alarm2Scheduled ? LED_ON : LED_OFF, TheSleepTime > 0 ? LED_ON : TheSleepTime > 0 ? LED_ON : LED_OFF);
+	  Renderer_SetLed(TheNapTime > 0 ? LED_ON : LED_OFF, alarm1Scheduled,  alarm2Scheduled, TheSleepTime > 0 ? LED_ON : TheSleepTime > 0 ? LED_ON : LED_OFF);
 	}
       }
     }
@@ -725,14 +765,6 @@ int main(void)
 	    Renderer_SetLed((TheNapTime > 0) ? LED_ON : LED_OFF, (TheGlobalSettings.alarm1.flags & ALARM_ACTIVE) ? LED_BLINK_LONG : LED_BLINK_SHORT, IsAlarmScheduled( &TheGlobalSettings.alarm2) ? LED_ON : LED_OFF, (TheSleepTime > 0) ? LED_ON : LED_OFF);	
 	  }
 	  
-	  if ((buttonEvents & CLOCK_UPDATE) && (--modeTimeout == 0) )
-	  {
-	    if (radioIsOn)
-	      newDeviceMode = modeShowRadio;
-	    else
-	      newDeviceMode = modeShowTime;
-	  }
-	  
 	  if (longPressEvent.longPress & BUTTON1_CLICK)
 	  {
 	    // adjust alarm
@@ -744,6 +776,17 @@ int main(void)
 	  {
 	    newDeviceMode = modeShowAlarm2;
 	  }
+	  
+	  if (alarm1Scheduled != NOT_SCHEDULED)
+	  {
+	    if (buttonEvents & (BUTTON3_CLICK | BUTTON4_CLICK))
+	    {
+	      // Toggle alarm suspend
+	      TheGlobalSettings.alarm1.flags ^= ALARM_SUSPENDED;
+	      modeTimeout = SHOW_ALARM_TIMEOUT;
+	      Renderer_Update_Secondary();
+	    }
+	  }
 	  break;
 	  
 	case modeShowAlarm2:
@@ -752,14 +795,6 @@ int main(void)
 	    modeTimeout = SHOW_ALARM_TIMEOUT;
 	    TheGlobalSettings.alarm2.flags ^= ALARM_ACTIVE;
 	    Renderer_SetLed( (TheNapTime > 0 )? LED_ON : LED_OFF, IsAlarmScheduled( &TheGlobalSettings.alarm1) ? LED_ON : LED_OFF, (TheGlobalSettings.alarm2.flags & ALARM_ACTIVE )? LED_BLINK_LONG : LED_BLINK_SHORT, (TheSleepTime > 0) ? LED_ON : LED_OFF);
-	  }
-	  
-	  if ((buttonEvents & CLOCK_UPDATE) && (--modeTimeout == 0) )
-	  {
-	    if (radioIsOn)
-	      newDeviceMode = modeShowRadio;
-	    else
-	      newDeviceMode = modeShowTime;
 	  }
 	  
 	  if (longPressEvent.longPress & BUTTON1_CLICK)
@@ -777,6 +812,17 @@ int main(void)
 	    }
 	    else
 	      newDeviceMode = modeShowTime;
+	  }
+	  
+	  if (alarm2Scheduled != NOT_SCHEDULED)
+	  {
+	    if (buttonEvents & (BUTTON3_CLICK | BUTTON4_CLICK))
+	    {
+	      // Toggle alarm suspend
+	      TheGlobalSettings.alarm2.flags ^= ALARM_SUSPENDED;
+	      modeTimeout = SHOW_ALARM_TIMEOUT;
+	      Renderer_Update_Secondary();
+	    }
 	  }
 	  break;
 	case modeAlarmFiring_beep:
@@ -1092,7 +1138,7 @@ int main(void)
 	  Renderer_SetFlashMask(0x0);
 	  timePollAllowed = 1;
 	  editMode = 0;	  
-	  secMode = SECONDARY_MODE_SEC;
+	  secMode = SECONDARY_MODE_RADIO;
 	  mainMode = MAIN_MODE_TIME;
           break;
 	case modeShowAlarm1:

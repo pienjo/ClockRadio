@@ -130,7 +130,14 @@ static void __privateRender(const uint8_t secondaryMode)
     }
     case SECONDARY_MODE_ALARM:
     {
-      if (!alarm || !(alarm->flags & ALARM_TYPE_RADIO))
+      if (!alarm || (alarm->flags & ALARM_SUSPENDED))
+      {
+	// Horizontal dashes
+	segmentDigits[DIGIT_1] = segmentDigits[DIGIT_2] = segmentDigits[DIGIT_3] = segmentDigits[DIGIT_4] = SEG_g;
+	break;
+      }
+      
+      if ( !(alarm->flags & ALARM_TYPE_RADIO))
       {
 	segmentDigits[DIGIT_1] = SEG_f | SEG_g | SEG_e | SEG_c | SEG_d; // lowercase b
 	segmentDigits[DIGIT_2] = SEG_a | SEG_f | SEG_g | SEG_e | SEG_d; // Uppercase E
