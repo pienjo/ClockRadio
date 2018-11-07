@@ -191,6 +191,23 @@ static void __privateRender(const uint8_t secondaryMode)
       }
       break;
     }
+    case SECONDARY_MODE_TIME_ADJUST:
+    {
+      uint8_t absAdjust;
+      if (TheGlobalSettings.time_adjust >= 0)
+      {
+	absAdjust = TheGlobalSettings.time_adjust;
+      }
+      else
+      {
+	absAdjust = -TheGlobalSettings.time_adjust;
+	segmentDigits[DIGIT_1] = SEG_g;
+      }
+
+      segmentDigits[DIGIT_2] = pgm_read_byte(BCDToSegment + (absAdjust / 10));
+      segmentDigits[DIGIT_3] = pgm_read_byte(BCDToSegment + (absAdjust % 10)) | SEG_DP;
+      break;
+    }
   }
   
   if (blinkStatus < BLINK_PERIOD)

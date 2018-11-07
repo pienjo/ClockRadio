@@ -23,6 +23,7 @@ enum enumSecondaryMode
   SECONDARY_MODE_ALARM,
   SECONDARY_MODE_SLEEP,
   SECONDARY_MODE_NAP,
+  SECONDARY_MODE_TIME_ADJUST,
 };
 
 void Renderer_Init();

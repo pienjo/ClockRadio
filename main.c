@@ -37,6 +37,7 @@ uint8_t TheNapTime = 0;
 #define BEEP_TOTALPERIOD     (BEEP_PAUSE + BEEP_ON_PERIOD)
 
 #define SHOW_ALARM_TIMEOUT   15
+#define TIME_ADJUST_TIMEOUT 15
 
 #define ALARM_BEEP_TIMEOUT   4
 #define ALARM_RADIO_TIMEOUT  60
@@ -76,6 +77,7 @@ enum clockMode
   modeAdjustType_Alarm,
   modeAdjustSleep,
   modeAdjustNap,
+  modeAdjustTimeAdjust
 } ;
 
 volatile uint16_t event ;
@@ -395,7 +397,8 @@ int main(void)
     TheGlobalSettings.onetime_alarm.min = 0x45;
     
     TheGlobalSettings.brightness = 13;
-    TheGlobalSettings.brightness_night = 3; 
+    TheGlobalSettings.brightness_night = 3;
+    TheGlobalSettings.time_adjust = 0; 
     WriteGlobalSettings();
   }
 
@@ -712,7 +715,11 @@ int main(void)
 	}
 	case modeShowDate:
 	{
-	  if (longPressEvent.shortPress & BUTTON1_CLICK)
+	  if (longPressEvent.longPress & BUTTON1_CLICK)
+	  {
+	    // adjust time adjust
+	    newDeviceMode = modeAdjustTimeAdjust;
+	  } else if (longPressEvent.shortPress & BUTTON1_CLICK)
 	  {
 	    newDeviceMode = modeShowAlarm1;
 	  }
@@ -1091,6 +1098,31 @@ int main(void)
 	  }
 	  break;      
 	}
+        case modeAdjustTimeAdjust:
+        {
+	  if (longPressEvent.shortPress & BUTTON1_CLICK)
+	  {
+	    newDeviceMode = modeShowDate;
+	  }else if(longPressEvent.shortPress & BUTTON4_CLICK)
+          {
+            if (TheGlobalSettings.time_adjust < 99)
+            {
+              TheGlobalSettings.time_adjust++;
+	      modeTimeout = TIME_ADJUST_TIMEOUT;
+              updateScreen = 1;
+              writeSettingTimeout = TIME_ADJUST_TIMEOUT;
+            }
+          } else if (longPressEvent.shortPress & BUTTON3_CLICK)
+          {
+            if (TheGlobalSettings.time_adjust > -99)
+            {
+              TheGlobalSettings.time_adjust--;
+              updateScreen = 1;
+              writeSettingTimeout = TIME_ADJUST_TIMEOUT;
+            }
+          }
+	  break;
+        }
       }
    
       // Mark all button events as handled
@@ -1296,6 +1328,13 @@ int main(void)
 	  mainMode = MAIN_MODE_SLEEP;
 	  secMode = SECONDARY_MODE_SLEEP;
 	  Renderer_SetLed(LED_BLINK_SHORT, alarm1Scheduled,  alarm2Scheduled, onetimeAlarmScheduled);
+	  break;
+	case modeAdjustTimeAdjust:
+	  modeTimeout = TIME_ADJUST_TIMEOUT;
+	  Renderer_SetFlashMask(0);
+	  editMode = 0;
+	  mainMode = MAIN_MODE_DATE;
+	  secMode = SECONDARY_MODE_TIME_ADJUST;
 	  break;
         default:
 	

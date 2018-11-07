@@ -44,6 +44,7 @@ struct GlobalSettings
   struct AlarmSetting  alarm1, 
                        alarm2,
 		       onetime_alarm;
+  int8_t               time_adjust;
 };
 
 extern struct GlobalSettings TheGlobalSettings;
