@@ -204,8 +204,8 @@ static void __privateRender(const uint8_t secondaryMode)
 	segmentDigits[DIGIT_1] = SEG_g;
       }
 
-      segmentDigits[DIGIT_2] = pgm_read_byte(BCDToSegment + (absAdjust / 10));
-      segmentDigits[DIGIT_3] = pgm_read_byte(BCDToSegment + (absAdjust % 10)) | SEG_DP;
+      segmentDigits[DIGIT_2] = pgm_read_byte(BCDToSegment + (absAdjust / 10)) | SEG_DP;
+      segmentDigits[DIGIT_3] = pgm_read_byte(BCDToSegment + (absAdjust % 10));
       break;
     }
   }

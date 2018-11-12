@@ -1,0 +1,7 @@
+{
+  "files.associations": {
+    "io.h": "c",
+    "ds1307.h": "c"
+  },
+  "editor.fontFamily": "hack"
+}
