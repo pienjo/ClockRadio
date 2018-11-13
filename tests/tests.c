@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <avr/sleep.h>
 
-#include <simavr/avr_mcu_section.h>
+#include <avr/avr_mcu_section.h>
 #include "../Timefuncs.h"
 #include "../DateTime.h"
 #include "../BCDFuncs.h"
@@ -46,13 +46,14 @@ const uint8_t PROGMEM DOW_tests[] =
 
 static void Test_GetDayOfWeek()
 {
-  printf("GetDayOfWeek..\n");
+  static const char PROGMEM title[] = "GetDayofWeek...\n";
+  printf_P(title);
   for( int testIdx = 0; ; ++testIdx)
   {
     const uint8_t day   = pgm_read_byte( 4 * testIdx + DOW_tests),
                   month = pgm_read_byte( 4 * testIdx + DOW_tests + 1),
                   year  = pgm_read_byte( 4 * testIdx + DOW_tests + 2),
-		  expect= pgm_read_byte( 4 * testIdx + DOW_tests + 3);
+                  expect= pgm_read_byte( 4 * testIdx + DOW_tests + 3);
 
     if (day == 0)
       break;
@@ -61,12 +62,14 @@ static void Test_GetDayOfWeek()
 
     if (actual != expect)
     {
-      printf("%02x/%02x/20%02x: Expected %2x, got %2x\n", day, month, year, expect, actual);
+      static const char PROGMEM fmt[] ="%02x/%02x/20%02x: Expected %2x, got %2x\n";
+      printf_P(fmt, day, month, year, expect, actual);
       errorOccurred = 1;
     }
     else
     {
-      printf("%02x/%02x/20%02x: OK (%d)\n", day, month, year, expect);
+      static const char PROGMEM fmt[] = "%02x/%02x/20%02x: OK (%d)\n";
+      printf_P(fmt, day, month, year, expect);
     }
 
   }
@@ -91,12 +94,14 @@ const uint8_t PROGMEM DPM_tests[] =  {
 
 static void Test_GetDaysPerMonth()
 {
-  printf("GetDayPerMonth..\n");
+  static const char PROGMEM title []= "GetDayPerMonth\n";
+  printf_P(title);
+  
   for( int testIdx = 0; ; ++testIdx)
   {
     const uint8_t month = pgm_read_byte( 3 * testIdx + DPM_tests + 0),
                   year  = pgm_read_byte( 3 * testIdx + DPM_tests + 1),
-		  expect= pgm_read_byte( 3 * testIdx + DPM_tests + 2);
+                  expect= pgm_read_byte( 3 * testIdx + DPM_tests + 2);
 
     if (month == 0)
       break;
@@ -105,12 +110,14 @@ static void Test_GetDaysPerMonth()
     
     if (actual != expect)
     {
-      printf("%02x/20%02x: Expected %02x, got %02x\n",month, year, expect, actual);
+      static const char PROGMEM fmt[]="%02x/20%02x: Expected %02x, got %02x\n";
+      printf_P(fmt,month, year, expect, actual);
       errorOccurred = 1;
     }
     else
     {
-      printf("%02x/20%02x: OK (%02x)\n",month, year, expect);
+      static const char PROGMEM fmt[]="%02x/20%02x: OK (%02x)\n";
+      printf_P(fmt,month, year, expect);
     }
 
   }
@@ -136,12 +143,14 @@ const uint8_t PROGMEM DOLS_tests[] =  {
 
 static void Test_GetDateOfLastSunday()
 {
-  printf("GetDateOfLastSunday..\n");
+  static const char PROGMEM title []= "GetDateOfLastSunday..\n";
+  printf_P(title);
+  
   for( int testIdx = 0; ; ++testIdx)
   {
     const uint8_t month = pgm_read_byte( 3 * testIdx + DOLS_tests + 0),
                   year  = pgm_read_byte( 3 * testIdx + DOLS_tests + 1),
-		  expect= pgm_read_byte( 3 * testIdx + DOLS_tests + 2);
+                  expect= pgm_read_byte( 3 * testIdx + DOLS_tests + 2);
 
     if (month == 0)
       break;
@@ -150,12 +159,14 @@ static void Test_GetDateOfLastSunday()
     
     if (actual != expect)
     {
-      printf("%02x/20%02x: Expected %02x, got %02x\n",month, year, expect, actual);
+      static const char PROGMEM fmt[]="%02x/20%02x: Expected %02x, got %02x\n";
+      printf_P(fmt,month, year, expect, actual);
       errorOccurred = 1;
     }
     else
     {
-      printf("%02x/20%02x: OK (%02x)\n",month, year, expect);
+      static const char PROGMEM fmt[]="%02x/20%02x: OK (%02x)\n";
+      printf_P(fmt,month, year, expect);
     }
 
   }
@@ -174,13 +185,14 @@ const uint8_t PROGMEM BCDToBin_tests[] =
 
 static void Test_BCDToBin()
 {
-  printf("BCDToBin..\n");
-  
+  static const char PROGMEM title []= "BCDToBin..\n";
+  printf_P(title);
+    
   for (int testIdx = 0;; ++testIdx)
   {
     const uint8_t input = pgm_read_byte(2 * testIdx + BCDToBin_tests + 0),
-		  expect = pgm_read_byte(2 * testIdx + BCDToBin_tests + 1);
-		  
+                  expect = pgm_read_byte(2 * testIdx + BCDToBin_tests + 1);
+                  
     if (input == 0)
       break;
       
@@ -188,12 +200,14 @@ static void Test_BCDToBin()
     
     if (actual != expect)
     {
-      printf("0x%02x: Expected %d, got %d\n", input, expect, actual);
+      static const char PROGMEM fmt[]="0x%02x: Expected %d, got %d\n";
+      printf_P(fmt, input, expect, actual);
       errorOccurred = 1;
     }
     else 
     { 
-      printf("0x%02x: OK (%d)\n", input, actual);
+      static const char PROGMEM fmt[]="0x%02x: OK (%d)\n";
+      printf_P(fmt, input, actual);
     }
   }
 }
@@ -213,12 +227,14 @@ const uint8_t PROGMEM BCDAdd_tests[] =  {
 
 static void Test_BCDAdd() 
 {
-  printf("BCDAdd..\n");
+  static const char PROGMEM title []= "BCDAdd..\n" ;
+  printf_P(title);
+  
   for( int testIdx = 0; ; ++testIdx)
   {
     const uint8_t left = pgm_read_byte( 3 * testIdx + BCDAdd_tests + 0),
                   right = pgm_read_byte( 3 * testIdx + BCDAdd_tests + 1),
-		  expect= pgm_read_byte( 3 * testIdx + BCDAdd_tests + 2);
+                  expect= pgm_read_byte( 3 * testIdx + BCDAdd_tests + 2);
 
     if (left == 0xff)
       break;
@@ -226,12 +242,14 @@ static void Test_BCDAdd()
     const uint8_t actual = BCDAdd(left, right);
     if (actual != expect)
     {
-      printf("0x%02x + 0x%02x: Expected 0x%02x, got 0x%02x\n", left, right, expect, actual);
+      static const char PROGMEM fmt[]="0x%02x + 0x%02x: Expected 0x%02x, got 0x%02x\n";
+      printf_P(fmt, left, right, expect, actual);
       errorOccurred = 1;
     }
     else
     {
-      printf("0x%02x + 0x%02x: OK(0x%02x)\n", left, right, actual);
+      static const char PROGMEM fmt[]="0x%02x + 0x%02x: OK(0x%02x)\n";
+      printf_P(fmt, left, right, actual);
     }
   }
 }
@@ -248,12 +266,14 @@ const uint8_t PROGMEM BCDSub_tests[] =  {
 
 static void Test_BCDSub() 
 {
-  printf("BCDSub..\n");
+  static const char PROGMEM title []= "BCDSub..\n" ;
+  printf_P(title);
+  
   for( int testIdx = 0; ; ++testIdx)
   {
     const uint8_t left = pgm_read_byte( 3 * testIdx + BCDSub_tests + 0),
                   right = pgm_read_byte( 3 * testIdx + BCDSub_tests + 1),
-		  expect= pgm_read_byte( 3 * testIdx + BCDSub_tests + 2);
+                  expect= pgm_read_byte( 3 * testIdx + BCDSub_tests + 2);
 
     if (left == 0xff)
       break;
@@ -261,16 +281,113 @@ static void Test_BCDSub()
     const uint8_t actual = BCDSub(left, right);
     if (actual != expect)
     {
-      printf("0x%02x - 0x%02x: Expected 0x%02x, got 0x%02x\n", left, right, expect, actual);
+      static const char PROGMEM fmt[]="0x%02x - 0x%02x: Expected 0x%02x, got 0x%02x\n";
+      printf_P(fmt, left, right, expect, actual);
       errorOccurred = 1;
     }
     else
     {
-      printf("0x%02x - 0x%02x: OK(0x%02x)\n", left, right, actual);
+      static const char PROGMEM fmt[]="0x%02x - 0x%02x: OK(0x%02x)\n";
+      printf_P(fmt, left, right, actual);
     }
   }
 }
 
+const uint8_t PROGMEM HandleEditUpTests[] = 
+{
+  /* input, editmode, maxvalue, expected */
+  0x00, EDIT_MODE_ONES, 0x99, 0x01,
+  0x00, EDIT_MODE_TENS, 0x99, 0x10,
+  0x59, EDIT_MODE_ONES, 0x59, 0x00,
+  0x59, EDIT_MODE_TENS, 0x59, 0x09,
+  0x57, EDIT_MODE_TENS, 0x59, 0x07,
+  0x12, EDIT_MODE_ONES | EDIT_MODE_ONEBASE, 0x12, 0x12,
+  0x12, EDIT_MODE_TENS | EDIT_MODE_ONEBASE, 0x12, 0x12,
+  0x59, EDIT_MODE_TENS, 0x59, 0x09,
+  0x99, EDIT_MODE_ONES, 0x99, 0x00,
+  0x99, EDIT_MODE_TENS, 0x99, 0x09,
+  0x97, EDIT_MODE_TENS, 0x99, 0x07,
+  0xff, 0xff, 0xff, 0xff
+};
+
+static void Test_HandleEditUp()
+{
+  static const char PROGMEM title []= "HandleEditUp...\n" ;
+  printf_P(title);
+  for( int testIdx = 0; ; ++testIdx)
+  {
+    const uint8_t input = pgm_read_byte( 4 * testIdx + HandleEditUpTests + 0),
+                  mode = pgm_read_byte( 4 * testIdx + HandleEditUpTests + 1),
+                  max = pgm_read_byte( 4 * testIdx + HandleEditUpTests + 2),
+                              expect = pgm_read_byte( 4 * testIdx + HandleEditUpTests + 3);
+
+    if (input == 0xff)
+      break;
+    
+    uint8_t actual = input;
+    HandleEditUp(mode, &actual, max);
+
+    if (actual != expect)
+    {
+      static const char PROGMEM fmt[]="0x%02x/0x%02x/0x%02x: Expected 0x%02x,got 0x%02x\n";
+      printf_P(fmt, input, mode, max, expect, actual);
+      errorOccurred = 1;
+    }
+    else
+    {
+      static const char PROGMEM fmt[]="0x%02x / 0x%02x / 0x%02x: OK(0x%02x)\n";
+      printf_P(fmt, input, mode, max, actual);
+    }
+    
+  }
+}
+const uint8_t PROGMEM HandleEditDownTests[] = 
+{
+  /* input, editmode, maxvalue, expected */
+  0x01, EDIT_MODE_ONES, 0x99, 0x00,
+  0x10, EDIT_MODE_TENS, 0x99, 0x00,
+  0x00, EDIT_MODE_ONES, 0x99, 0x99,
+  0x00, EDIT_MODE_TENS, 0x99, 0x90,
+  0x00, EDIT_MODE_ONES, 0x59, 0x59,
+  0x00, EDIT_MODE_TENS, 0x59, 0x50,
+  0x07, EDIT_MODE_TENS, 0x59, 0x57,
+  0x1, EDIT_MODE_ONES | EDIT_MODE_ONEBASE, 0x12, 0x1,
+  0x06, EDIT_MODE_TENS | EDIT_MODE_ONEBASE, 0x12, 0x1,
+  0xff, 0xff, 0xff, 0xff
+};
+
+static void Test_HandleEditDown()
+{
+  static const char PROGMEM title []= "HandleEditDown...\n";
+  printf_P(title);
+  
+  for( int testIdx = 0; ; ++testIdx)
+  {
+    const uint8_t input = pgm_read_byte( 4 * testIdx + HandleEditDownTests + 0),
+                  mode = pgm_read_byte( 4 * testIdx + HandleEditDownTests + 1),
+                  max = pgm_read_byte( 4 * testIdx + HandleEditDownTests + 2),
+                              expect = pgm_read_byte( 4 * testIdx + HandleEditDownTests + 3);
+
+    if (input == 0xff)
+      break;
+    
+    uint8_t actual = input;
+    HandleEditDown(mode, &actual, max);
+
+    if (actual != expect)
+    {
+      static const char PROGMEM fmt[]="0x%02x/0x%02x/0x%02x: Expected 0x%02x,got 0x%02x\n";
+      printf_P(fmt, input, mode, max, expect, actual);
+      errorOccurred = 1;
+    }
+    else
+    {
+      static const char PROGMEM fmt[]="0x%02x / 0x%02x / 0x%02x: OK(0x%02x)\n";
+printf_P(fmt, input, mode, max, actual);
+    }
+    
+  }
+}
 const uint8_t PROGMEM NormalizeHours_tests[] =
 {
   // Year, Month, Day, Hour -> Year, Month, Day, Hour
@@ -294,7 +411,8 @@ inline static _Bool timesAreEqual(struct DateTime *time1, struct DateTime *time2
 
 static inline void printTime(struct DateTime *time)
 {
-  printf("%02x/%02x/%02x %02x:%02x:%02x",time->year, time->month, time->day, time->hour, time->min, time->sec); 
+  static const char PROGMEM fmt[]="%02x/%02x/%02x %02x:%02x:%02x";
+  printf_P(fmt,time->year, time->month, time->day, time->hour, time->min, time->sec); 
 }
 
 void Test_NormalizeHours() 
@@ -308,7 +426,9 @@ void Test_NormalizeHours()
   expectedTime.min = 0x12;
   expectedTime.sec = 0x45;
   
-  printf("NormalizeHours..\n");
+  static const char PROGMEM title []= "NormalizeHours..\n" ;
+  printf_P(title);
+  
   for( int testIdx = 0; ; ++testIdx)
   {
     testTime.year = pgm_read_byte( 8 * testIdx + NormalizeHours_tests + 0);
@@ -328,15 +448,19 @@ void Test_NormalizeHours()
     NormalizeHours(&testTime);
     if (timesAreEqual(&testTime, &expectedTime))
     {
-       printf(" OK: (");
+       static const char PROGMEM fmt1[]=" OK: (";
+       printf_P(fmt1);
        printTime(&testTime);
-       printf(")\n");
+       static const char PROGMEM fmt2[]=")\n";
+       printf_P(fmt2);
     }
     else
     {
-      printf(": Expected ");
+      static const char PROGMEM fmt[]=": Expected ";
+      printf_P(fmt);
       printTime(&expectedTime);
-      printf(" Got ");
+      static const char PROGMEM fmt2[]=" Got ";
+      printf_P(fmt2);
       printTime(&testTime);
       uart_putchar('\n', stdout);
       errorOccurred =1;
@@ -355,7 +479,8 @@ void Test_NormalizeHours()
     uint8_t expect = (dow % 7) + 1;
     if (testTime.wday != expect)
     {
-      printf("DOW error: %" PRIu8" positive, expect %d got %d\n", dow, expect, testTime.wday);
+      static const char PROGMEM fmt[]="DOW error: %" PRIu8" positive, expect %d got %d\n";
+      printf_P(fmt, dow, expect, testTime.wday);
       errorOccurred =1;
     }
     else
@@ -368,8 +493,9 @@ void Test_NormalizeHours()
       expect = ((dow + 5) %7 ) + 1;
       if (testTime.wday != expect)
       {
-	printf("DOW error: %" PRIu8" negative, expect %d got %d\n", dow, expect, testTime.wday);
-	errorOccurred =1;
+        static const char PROGMEM fmt[]="DOW error: %"PRIu8" negative, expect %d got %d\n";
+        printf_P(fmt , dow, expect, testTime.wday);
+        errorOccurred =1;
       }
     }
   }
@@ -407,7 +533,8 @@ const uint8_t PROGMEM IDA_tests[] =
 
 static void Test_IsDSTActive()
 {
-  printf("IsDSTActive..\n");
+  static const char PROGMEM title []= "IsDSTActive..\n";
+  printf_P(title);
   
   struct DateTime testTime;
   
@@ -437,11 +564,13 @@ static void Test_IsDSTActive()
     
     if (actual == expected)
     {
-      printf("OK (%d)\n", expected);
+      static const char PROGMEM fmt[]="OK (%d)\n";
+      printf_P(fmt, expected);
     }
     else
     {
-      printf("Expected %d, got %d\n", expected, actual);
+      static const char PROGMEM fmt[]="Expected %d, got %d\n";
+      printf_P(fmt, expected, actual);
       errorOccurred = 1;
     }
   }
@@ -463,8 +592,9 @@ const uint8_t PROGMEM IIDO_tests[] =
 
 static void Test_IsItDarkOutside()
 {
-  printf("IsItDarkOutside\n");
-  
+  static const char PROGMEM title []= "IsItDarkOutside";
+  printf_P(title);
+
   struct DateTime testTime;
   
   // constant among all tests
@@ -487,11 +617,13 @@ static void Test_IsItDarkOutside()
     printTime(&testTime);
     if (expect == actual)
     {
-      printf(": OK (%d)\n", actual);
+      static const char PROGMEM fmt[]=": OK (%d)\n";
+      printf_P(fmt, actual);
     }
     else
     {
-      printf(": Expected %d, got %d\n", expect, actual);
+      static const char PROGMEM fmt[]=": Expected %d, got %d\n";
+      printf_P(fmt, expect, actual);
       errorOccurred = 1;
     }
   }
@@ -502,7 +634,8 @@ struct GlobalSettings TheGlobalSettings;
 
 void Test_GetActiveBrightness()
 {
-  printf("Test_GetActiveBrightness..\n");
+  static const char PROGMEM title []= "Test_GetActiveBrightness..\n";
+  printf_P(title);
   
   TheGlobalSettings.brightness = 10;
   TheGlobalSettings.brightness_night = 3;
@@ -521,12 +654,14 @@ void Test_GetActiveBrightness()
   uint8_t actual = GetActiveBrightness(&testTime);
   if(actual != TheGlobalSettings.brightness_night)
   {
-    printf(": Expected %d, got %d\n", TheGlobalSettings.brightness_night, actual);
+    static const char PROGMEM fmt[]=": Expected %d, got %d\n";
+    printf_P(fmt, TheGlobalSettings.brightness_night, actual);
     errorOccurred = 1;
   }
   else
   {
-    printf(": OK\n");
+    static const char PROGMEM fmt[]=": OK\n";
+    printf_P(fmt);
   }
   
   // Midday
@@ -536,18 +671,21 @@ void Test_GetActiveBrightness()
   actual = GetActiveBrightness(&testTime);
   if(actual != TheGlobalSettings.brightness)
   {
-    printf(": Expected %d, got %d\n", TheGlobalSettings.brightness, actual);
+    static const char PROGMEM fmt[]=": Expected %d, got %d\n";
+    printf_P(fmt, TheGlobalSettings.brightness, actual);
     errorOccurred = 1;
   }
   else
   {
-    printf(": OK\n");
+    static const char PROGMEM fmt[]=": OK\n";
+    printf_P(fmt);
   }
 }
 
 void Test_IncreaseBrightness()
 {
-  printf("IncreaseBrightness..\n");
+  static const char PROGMEM title []= "IncreaseBrightness..\n";
+  printf_P(title);
       
   const uint8_t initialBrightness = 10, initialNightBrightness = 3;
   
@@ -570,29 +708,33 @@ void Test_IncreaseBrightness()
   
   if (TheGlobalSettings.brightness != initialBrightness)
   {
-    printf(": Wrong setting changed.\n");
+    static const char PROGMEM fmt[]=": Wrong setting changed.\n";
+    printf_P(fmt);
     errorOccurred = 1;
   }
   else
   {
     if (TheGlobalSettings.brightness_night != initialNightBrightness + 1)
     {
-      printf(": Expected %d, got %d\n", initialNightBrightness + 1, TheGlobalSettings.brightness_night);
+      static const char PROGMEM fmt[]=": Expected %d, got %d\n";
+      printf_P(fmt, initialNightBrightness + 1, TheGlobalSettings.brightness_night);
       errorOccurred = 1;
     }
     else
     {
       for (int i = 0; i < 15; ++i)
-	IncreaseBrightness(&testTime);
-	
+        IncreaseBrightness(&testTime);
+        
       if (TheGlobalSettings.brightness_night != 15)
       {
-	printf(": Setting didn't clip, got %d\n", TheGlobalSettings.brightness_night);
-	errorOccurred = 1;
+        static const char PROGMEM fmt[]=": Setting didn't clip, got %d\n";
+        printf_P(fmt, TheGlobalSettings.brightness_night);
+        errorOccurred = 1;
       }
       else
       {
-	printf(": OK\n");
+        static const char PROGMEM fmt[]=": OK\n";
+        printf_P(fmt);
       }
     }
   }
@@ -607,29 +749,33 @@ void Test_IncreaseBrightness()
   
   if (TheGlobalSettings.brightness_night != initialNightBrightness)
   {
-    printf(": Wrong setting changed.\n");
+    static const char PROGMEM fmt[]=": Wrong setting changed.\n";
+    printf_P(fmt);
     errorOccurred = 1;
   }
   else
   {
     if (TheGlobalSettings.brightness != initialBrightness + 1)
     {
-      printf(": Expected %d, got %d\n", initialBrightness + 1, TheGlobalSettings.brightness);
+      static const char PROGMEM fmt[]=": Expected %d, got %d\n";
+      printf_P(fmt, initialBrightness + 1, TheGlobalSettings.brightness);
       errorOccurred = 1;
     }
     else
     {
       for (int i = 0; i < 15; ++i)
-	IncreaseBrightness(&testTime);
-	
+        IncreaseBrightness(&testTime);
+        
       if (TheGlobalSettings.brightness != 15)
       {
-	printf(": Setting didn't clip, got %d\n", TheGlobalSettings.brightness);
-	errorOccurred = 1;
+        static const char PROGMEM fmt[]=": Setting didn't clip, got %d\n";
+        printf_P(fmt, TheGlobalSettings.brightness);
+        errorOccurred = 1;
       }
       else
       {
-	printf(": OK\n");
+        static const char PROGMEM fmt[]=": OK\n";
+        printf_P(fmt);
       }
     }
   }
@@ -637,8 +783,9 @@ void Test_IncreaseBrightness()
 
 void Test_DecreaseBrightness()
 {
-  printf("DecreaseBrightness..\n");
-      
+  static const char PROGMEM title []= "DecreaseBrightness..\n";
+  printf_P(title);
+        
   const uint8_t initialBrightness = 10, initialNightBrightness = 3;
   
   TheGlobalSettings.brightness = initialBrightness;
@@ -660,29 +807,33 @@ void Test_DecreaseBrightness()
   
   if (TheGlobalSettings.brightness != initialBrightness)
   {
-    printf(": Wrong setting changed.\n");
+    static const char PROGMEM fmt[]=": Wrong setting changed.\n";
+    printf_P(fmt);
     errorOccurred = 1;
   }
   else
   {
     if (TheGlobalSettings.brightness_night != initialNightBrightness - 1)
     {
-      printf(": Expected %d, got %d\n", initialNightBrightness - 1, TheGlobalSettings.brightness_night);
+      static const char PROGMEM fmt[]=": Expected %d, got %d\n";
+      printf_P(fmt, initialNightBrightness - 1, TheGlobalSettings.brightness_night);
       errorOccurred = 1;
     }
     else
     {
       for (int i = 0; i < 15; ++i)
-	DecreaseBrightness(&testTime);
-	
+        DecreaseBrightness(&testTime);
+        
       if (TheGlobalSettings.brightness_night != 0)
       {
-	printf(": Setting didn't clip, got %d\n", TheGlobalSettings.brightness_night);
-	errorOccurred = 1;
+        static const char PROGMEM fmt[]=": Setting didn't clip, got %d\n";
+        printf_P(fmt, TheGlobalSettings.brightness_night);
+        errorOccurred = 1;
       }
       else
       {
-	printf(": OK\n");
+        static const char PROGMEM fmt[]=": OK\n";
+        printf_P(fmt);
       }
     }
   }
@@ -697,29 +848,33 @@ void Test_DecreaseBrightness()
   
   if (TheGlobalSettings.brightness_night != initialNightBrightness)
   {
-    printf(": Wrong setting changed.\n");
+    static const char PROGMEM fmt[]=": Wrong setting changed.\n";
+    printf_P(fmt);
     errorOccurred = 1;
   }
   else
   {
     if (TheGlobalSettings.brightness != initialBrightness - 1)
     {
-      printf(": Expected %d, got %d\n", initialBrightness - 1, TheGlobalSettings.brightness);
+      static const char PROGMEM fmt[]=": Expected %d, got %d\n";
+      printf_P(fmt, initialBrightness - 1, TheGlobalSettings.brightness);
       errorOccurred = 1;
     }
     else
     {
       for (int i = 0; i < 15; ++i)
-	DecreaseBrightness(&testTime);
-	
+        DecreaseBrightness(&testTime);
+        
       if (TheGlobalSettings.brightness != 0)
       {
-	printf(": Setting didn't clip, got %d\n", TheGlobalSettings.brightness);
-	errorOccurred = 1;
+        static const char PROGMEM fmt[]=": Setting didn't clip, got %d\n";
+        printf_P(fmt, TheGlobalSettings.brightness);
+        errorOccurred = 1;
       }
       else
       {
-	printf(": OK\n");
+        static const char PROGMEM fmt[]=": OK\n";
+        printf_P(fmt);
       }
     }
   }
@@ -732,6 +887,9 @@ int main()
   Test_BCDToBin();
   Test_BCDAdd();
   Test_BCDSub();
+  Test_HandleEditUp();
+  Test_HandleEditDown();
+
   Test_GetDayOfWeek();
   Test_GetDaysPerMonth();
   Test_GetDateOfLastSunday();
@@ -741,11 +899,17 @@ int main()
   Test_GetActiveBrightness();
   Test_IncreaseBrightness();
   Test_DecreaseBrightness();
-  
+
   if (errorOccurred)
-    printf("Test done, with errors\n");
+  {
+    static const char PROGMEM fmt[] = "Test done, with errors\n";
+    printf_P(fmt);
+  }
   else
-    printf("Tests done, no errors\n");
+  {
+    static const char PROGMEM fmt[] = "Tests done, no errors\n";
+    printf_P(fmt);
+  }
   sleep_cpu();  
 }
 

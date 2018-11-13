@@ -24,10 +24,6 @@ struct DateTime ThePreviousDateTime;
 uint8_t TheSleepTime = 0;
 uint8_t TheNapTime = 0;
 
-#define EDIT_MODE_ONES     0x1
-#define EDIT_MODE_TENS     0x2
-#define EDIT_MODE_MASK     0x03
-#define EDIT_MODE_ONEBASE 0x04
 
 #define BEEP_MARK             3
 #define BEEP_SPACE           4
@@ -270,49 +266,6 @@ _Bool RadioOn()
   return 1;
 }
 
-void HandleEditUp(const uint8_t editMode, uint8_t *const editDigit, const uint8_t editMaxValue)
-{
-  if (!editDigit)
-    return;
-  switch(editMode & EDIT_MODE_MASK)
-  {
-    case EDIT_MODE_ONES:
-    {
-      *editDigit = BCDAdd(*editDigit, 1);
-      break;
-    }
-    case EDIT_MODE_TENS:
-    {
-      *editDigit = BCDAdd(*editDigit, 10);
-      break;
-    }
-  }
-  
-  if (*editDigit > editMaxValue)
-    *editDigit = editMaxValue;
-}
-
-void HandleEditDown(const uint8_t editMode, uint8_t *const editDigit, const uint8_t editMaxValue)
-{
-  switch(editMode & EDIT_MODE_MASK)
-  {
-    case EDIT_MODE_ONES:
-    {
-      *editDigit = BCDSub(*editDigit, 1);
-      break;
-    }
-    case EDIT_MODE_TENS:
-    {
-      if (*editDigit > 0x10)
-        *editDigit = BCDSub(*editDigit, 10);
-      break;
-    }
-  }
-  
-  if ((editMode & EDIT_MODE_ONEBASE) && (*editDigit == 0))
-    *editDigit = 1;
-} 
-
 uint8_t alarm1Timeout = 0; // minutes
 uint8_t alarm2Timeout = 0; // minutes
 uint8_t onetimeAlarmTimeout = 0; // minutes
@@ -533,24 +486,36 @@ enum clockMode ActivateAlarms()
 
 void ApplyTimeAdjust()
 {
-  uint8_t oldSec = TheDateTime.sec;
-  
+  int8_t adjust = 0;
+
   TheDeviceState.timeAdjustRemainder += TheGlobalSettings.time_adjust;
 
-  while(TheDeviceState.timeAdjustRemainder >= 10)
+  if (TheDeviceState.timeAdjustRemainder >= 10)
   {
-    ++TheDateTime.sec;
-    TheDeviceState.timeAdjustRemainder -= 10;
-  }
+    while(TheDeviceState.timeAdjustRemainder >= 10)
+    {
+      ++adjust;
+      TheDeviceState.timeAdjustRemainder -= 10;
+    }
 
-  while(TheDeviceState.timeAdjustRemainder <= -10)
-  {
-    --TheDateTime.sec;
-    TheDeviceState.timeAdjustRemainder += 10;
-  }
+    if (adjust >= 10)
+      adjust += 6;
 
-  if (oldSec != TheDateTime.sec)
+    TheDateTime.sec = BCDAdd(TheDateTime.sec, adjust);
+    Write_DS1307_DateTime();
+  }
+  else if (TheDeviceState.timeAdjustRemainder <= -10)
   {
+    while(TheDeviceState.timeAdjustRemainder >= 10)
+    {
+      ++adjust;
+      TheDeviceState.timeAdjustRemainder -= 10;
+    }
+
+    if (adjust >= 10)
+      adjust += 6;
+
+    TheDateTime.sec = BCDSub(TheDateTime.sec, adjust);
     Write_DS1307_DateTime();
   }
 }
@@ -1211,7 +1176,7 @@ int main(void)
           
           Renderer_SetFlashMask(0x2); 
           editDigit = &TheDateTime.year;
-          editMode = EDIT_MODE_TENS | EDIT_MODE_ONEBASE;
+          editMode = EDIT_MODE_TENS;
           editMaxValue = 0x99;
           break;
         case modeAdjustYearOnes:

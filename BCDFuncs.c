@@ -56,3 +56,65 @@ uint8_t BCDToBin(uint8_t bcd)
   
   return bin;
 }
+
+
+void HandleEditUp(const uint8_t editMode, uint8_t *const editDigit, const uint8_t editMaxValue)
+{
+  if (!editDigit)
+    return;
+  switch(editMode & EDIT_MODE_MASK)
+  {
+    case EDIT_MODE_ONES:
+    {
+      *editDigit = BCDAdd(*editDigit, 1);
+      break;
+    }
+    case EDIT_MODE_TENS:
+    {
+      *editDigit = BCDAdd(*editDigit, 0x10);
+      break;
+    }
+  }
+  
+  if (*editDigit > editMaxValue)
+  {
+    if (editMode & EDIT_MODE_ONEBASE)
+      *editDigit = editMaxValue;
+    else
+    {
+      *editDigit = BCDSub( *editDigit, editMaxValue);
+      *editDigit = BCDSub( *editDigit, 1);
+    }
+  }
+}
+
+void HandleEditDown(const uint8_t editMode, uint8_t *const editDigit, const uint8_t editMaxValue)
+{
+  switch(editMode & EDIT_MODE_MASK)
+  {
+    case EDIT_MODE_ONES:
+    {
+      *editDigit = BCDSub(*editDigit, 1);
+      break;
+    }
+    case EDIT_MODE_TENS:
+    {
+      *editDigit = BCDSub(*editDigit, 0x10);
+      break;
+    }
+  }
+  
+  if (editMode & EDIT_MODE_ONEBASE)
+  {
+    if (*editDigit == 0 || *editDigit > editMaxValue)
+      *editDigit = 1;
+  }
+  else
+  {
+    if (*editDigit > editMaxValue)
+    {
+      uint8_t diff = BCDSub( 0x99, *editDigit);
+      *editDigit = BCDSub(editMaxValue, diff);
+    }
+  }
+} 
