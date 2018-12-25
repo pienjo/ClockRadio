@@ -50,10 +50,10 @@ bitmap.h: bitmap.txt
 bitmap.c: bitmap.txt bitmap.h
 	lua mkbitmap_source.lua bitmap.txt > bitmap.c
 	
-obj/%.o: %.c
+obj/%.o: %.c outputdir
 	$(CC) -MMD $(CFLAGS) -c $< -o $@
 
-obj/%.o: %.S
+obj/%.o: %.S outputdir
 	$(CC) -MMD $(ASFLAGS) -x assembler-with-cpp -c $< -o $@
 
 obj/$(TARGET).elf: $(OBJECTS)
