@@ -506,10 +506,10 @@ void ApplyTimeAdjust()
   }
   else if (TheDeviceState.timeAdjustRemainder <= -10)
   {
-    while(TheDeviceState.timeAdjustRemainder >= 10)
+    while(TheDeviceState.timeAdjustRemainder <= -10)
     {
       ++adjust;
-      TheDeviceState.timeAdjustRemainder -= 10;
+      TheDeviceState.timeAdjustRemainder += 10;
     }
 
     if (adjust >= 10)
