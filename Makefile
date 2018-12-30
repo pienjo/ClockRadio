@@ -32,7 +32,7 @@ LDFLAGS+= -Wl,-Map=$(TARGET).map
 all: $(TARGET).hex
 
 clean: 
-	rm -rf $(OBJECTS) $(DEPS) obj/$(TARGET).elf $(TARGET).hex $(TARGET).map	font.c bitmap.h bitmap.c $(TARGET).lst
+	rm -rf $(OBJECTS) $(DEPS) obj/$(TARGET).elf $(TARGET).hex $(TARGET).map	font.c bitmap.h bitmap.c $(TARGET).lst obj
 
 realclean:  clean
 	rm -rf obj

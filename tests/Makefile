@@ -18,7 +18,7 @@ OBJECTS=$(SOURCES:%.c=obj/%.o)
 all: run
 
 clean: 
-	rm -rf $(OBJECTS) $(TARGET).axf $(TARGET).map
+	rm -rf $(OBJECTS) $(TARGET).axf $(TARGET).map obj
 
 realclean:  clean
 	rm -rf obj
@@ -29,7 +29,7 @@ outputdir:
 run: $(TARGET).axf
 	simavr $(TARGET).axf
 
-obj/%.o: %.c
+obj/%.o: %.c outputdir
 	$(CC) -gdwarf-2 $(CFLAGS) -c $< -o $@
 
 $(TARGET).axf: $(OBJECTS)
