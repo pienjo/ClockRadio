@@ -161,3 +161,9 @@ You need to have the following installed:
 
 To run the unittests in tests, you'll also need simavr plus its headers.
 
+Case
+====
+
+I posted the case I made for this alarm clock to Thingiverse, see 
+
+https://www.thingiverse.com/thing:3313125
