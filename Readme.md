@@ -18,6 +18,20 @@ alarm 1, alarm 2, or one-time alarm). Performing a long press while the
 date is being shown will edit the time drift compensation. The display will
 return to ''Time'' when no buttons are pressed.
 
+## Display brightness
+
+The display has separate brightness settings for day and night. Transition 
+from day to night occurs roughly around sunrise (Assuming a northern 
+lattitude of aroudn 51 degrees). 
+
+Brightness can be changed using the ''increase'' and ''decrease'' buttons while the 
+display is showing the time.
+
+## Daylight saving time
+
+The clock will automatically apply daylight saving time, based on the current (2019) 
+EU rules (which are bound to change again, oh well)
+
 ## Editing
 
 A short press on the mode button will advance to the next digit/number. Use 
