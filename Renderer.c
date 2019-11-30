@@ -85,6 +85,8 @@ static uint8_t __getDigitMask(uint8_t prevDigit, uint8_t currentDigit, int8_t ro
 }
 static void __privateRender(const uint8_t secondaryMode)
 {
+  InitializePanels(4);
+  
   uint8_t data[4]; // Data to be sent to the panels
 
   // Pre-compute the data for the 7-segment displays, it needs to be rotated
@@ -147,18 +149,18 @@ static void __privateRender(const uint8_t secondaryMode)
     {
       if (!alarm || (alarm->flags & ALARM_SUSPENDED))
       {
-	// Horizontal dashes
-	segmentDigits[DIGIT_1] = segmentDigits[DIGIT_2] = segmentDigits[DIGIT_3] = segmentDigits[DIGIT_4] = SEG_g;
-	break;
+        // Horizontal dashes
+        segmentDigits[DIGIT_1] = segmentDigits[DIGIT_2] = segmentDigits[DIGIT_3] = segmentDigits[DIGIT_4] = SEG_g;
+        break;
       }
       
       if ( !(alarm->flags & ALARM_TYPE_RADIO))
       {
-	segmentDigits[DIGIT_1] = SEG_f | SEG_g | SEG_e | SEG_c | SEG_d; // lowercase b
-	segmentDigits[DIGIT_2] = SEG_a | SEG_f | SEG_g | SEG_e | SEG_d; // Uppercase E
-	segmentDigits[DIGIT_3] = SEG_a | SEG_f | SEG_g | SEG_e | SEG_d; // Uppercase E
-	segmentDigits[DIGIT_4] = SEG_a | SEG_f | SEG_b | SEG_g | SEG_e; // lowecase p
-	break;
+        segmentDigits[DIGIT_1] = SEG_f | SEG_g | SEG_e | SEG_c | SEG_d; // lowercase b
+        segmentDigits[DIGIT_2] = SEG_a | SEG_f | SEG_g | SEG_e | SEG_d; // Uppercase E
+        segmentDigits[DIGIT_3] = SEG_a | SEG_f | SEG_g | SEG_e | SEG_d; // Uppercase E
+        segmentDigits[DIGIT_4] = SEG_a | SEG_f | SEG_b | SEG_g | SEG_e; // lowecase p
+        break;
       }
       // fall-through
     }
@@ -174,7 +176,7 @@ static void __privateRender(const uint8_t secondaryMode)
       segmentDigits[DIGIT_2] = pgm_read_byte(BCDToSegment + (freq%10));
       freq /= 10;
       if(freq)
-	segmentDigits[DIGIT_1] = pgm_read_byte(BCDToSegment + (freq%10));
+        segmentDigits[DIGIT_1] = pgm_read_byte(BCDToSegment + (freq%10));
 
       break;
     }
@@ -188,7 +190,7 @@ static void __privateRender(const uint8_t secondaryMode)
       
       if (hours)
       {
-	segmentDigits[DIGIT_2] = pgm_read_byte(BCDToSegment + hours) | SEG_DP;
+        segmentDigits[DIGIT_2] = pgm_read_byte(BCDToSegment + hours) | SEG_DP;
       }
       break;
     }
@@ -202,7 +204,7 @@ static void __privateRender(const uint8_t secondaryMode)
       
       if (hours)
       {
-	segmentDigits[DIGIT_2] = pgm_read_byte(BCDToSegment + hours) | SEG_DP;
+        segmentDigits[DIGIT_2] = pgm_read_byte(BCDToSegment + hours) | SEG_DP;
       }
       break;
     }
@@ -211,12 +213,12 @@ static void __privateRender(const uint8_t secondaryMode)
       uint8_t absAdjust;
       if (TheGlobalSettings.time_adjust >= 0)
       {
-	absAdjust = TheGlobalSettings.time_adjust;
+        absAdjust = TheGlobalSettings.time_adjust;
       }
       else
       {
-	absAdjust = -TheGlobalSettings.time_adjust;
-	segmentDigits[DIGIT_1] = SEG_g;
+        absAdjust = -TheGlobalSettings.time_adjust;
+        segmentDigits[DIGIT_1] = SEG_g;
       }
 
       segmentDigits[DIGIT_2] = pgm_read_byte(BCDToSegment + (absAdjust / 10)) | SEG_DP;
@@ -247,62 +249,62 @@ static void __privateRender(const uint8_t secondaryMode)
       uint8_t wday_mask = 0;
       switch(myMainMode)
       {
-	case MAIN_MODE_TIME:
-	  mainDigit[0] = __getDigitMask(previousHour >> 4, TheDateTime.hour >> 4, i);
-	  mainDigit[1] = __getDigitMask(previousHour &0xf, TheDateTime.hour & 0xf, i);
-	  mainDigit[2] = __getDigitMask(previousMinute >> 4, TheDateTime.min >> 4, i);
-	  mainDigit[3] = __getDigitMask(previousMinute &0xf, TheDateTime.min & 0xf, i);
-	  dotMask =  (i == 1 || i == 5) ? 0x20 : 0;
-	  wday_mask =  ( i == TheDateTime.wday - 1) ? 0x3: 0;
-	  break;
-	case MAIN_MODE_DATE:
-	  mainDigit[0] = __getDigitMaskSingle(TheDateTime.day >> 4, i);
-	  mainDigit[1] = __getDigitMaskSingle(TheDateTime.day &0xf, i);
-	  mainDigit[2] = __getDigitMaskSingle(TheDateTime.month >> 4, i);
-	  mainDigit[3] = __getDigitMaskSingle(TheDateTime.month &0xf, i);
-	  dotMask = (i < 2 ? 0x40 : (i <5 ? 0x20 : (i < 7 ? 0x10 : 0)));
-	  wday_mask =  ( i == TheDateTime.wday - 1) ? 0x3: 0;
-	  break;
-	case MAIN_MODE_ALARM:
-	  if (alarm)
-	  {
-	    mainDigit[0] = __getDigitMaskSingle(alarm->hour >>4, i);
-	    mainDigit[1] = __getDigitMaskSingle(alarm->hour &0xf, i);
-	    mainDigit[2] = __getDigitMaskSingle(alarm->min >> 4, i);
-	    mainDigit[3] = __getDigitMaskSingle(alarm->min &0xf, i);
-	    dotMask =  (i == 1 || i == 5) ? 0x20 : 0;
-	    if (i == 7)
-	      wday_mask = 0;
-	    else
-	    {
-	      switch (alarm->flags & ALARM_DAY_BITS)
-	      {
-		case ALARM_DAY_DAILY:
-		  wday_mask = 3;
-		  break;
-		case ALARM_DAY_WEEK:
-		  wday_mask = (i < 5) ? 3 : 0;
-		  break;
-		case ALARM_DAY_WEEKEND:
-		  wday_mask = (i >= 5 && i < 7 ) ? 3 : 0;
-		  break;
-	      }
-	    }
-	  }
-	  break;
+        case MAIN_MODE_TIME:
+          mainDigit[0] = __getDigitMask(previousHour >> 4, TheDateTime.hour >> 4, i);
+          mainDigit[1] = __getDigitMask(previousHour &0xf, TheDateTime.hour & 0xf, i);
+          mainDigit[2] = __getDigitMask(previousMinute >> 4, TheDateTime.min >> 4, i);
+          mainDigit[3] = __getDigitMask(previousMinute &0xf, TheDateTime.min & 0xf, i);
+          dotMask =  (i == 1 || i == 5) ? 0x20 : 0;
+          wday_mask =  ( i == TheDateTime.wday - 1) ? 0x3: 0;
+          break;
+        case MAIN_MODE_DATE:
+          mainDigit[0] = __getDigitMaskSingle(TheDateTime.day >> 4, i);
+          mainDigit[1] = __getDigitMaskSingle(TheDateTime.day &0xf, i);
+          mainDigit[2] = __getDigitMaskSingle(TheDateTime.month >> 4, i);
+          mainDigit[3] = __getDigitMaskSingle(TheDateTime.month &0xf, i);
+          dotMask = (i < 2 ? 0x40 : (i <5 ? 0x20 : (i < 7 ? 0x10 : 0)));
+          wday_mask =  ( i == TheDateTime.wday - 1) ? 0x3: 0;
+          break;
+        case MAIN_MODE_ALARM:
+          if (alarm)
+          {
+            mainDigit[0] = __getDigitMaskSingle(alarm->hour >>4, i);
+            mainDigit[1] = __getDigitMaskSingle(alarm->hour &0xf, i);
+            mainDigit[2] = __getDigitMaskSingle(alarm->min >> 4, i);
+            mainDigit[3] = __getDigitMaskSingle(alarm->min &0xf, i);
+            dotMask =  (i == 1 || i == 5) ? 0x20 : 0;
+            if (i == 7)
+              wday_mask = 0;
+            else
+            {
+              switch (alarm->flags & ALARM_DAY_BITS)
+              {
+                case ALARM_DAY_DAILY:
+                  wday_mask = 3;
+                  break;
+                case ALARM_DAY_WEEK:
+                  wday_mask = (i < 5) ? 3 : 0;
+                  break;
+                case ALARM_DAY_WEEKEND:
+                  wday_mask = (i >= 5 && i < 7 ) ? 3 : 0;
+                  break;
+              }
+            }
+          }
+          break;
       }
       
       if (blinkStatus < BLINK_PERIOD)
       {
-	uint8_t digitMask = blinkMask & 0xff;
-	for (uint8_t j = 0, mask = 0x80; j < 4; ++j, mask >>= 1)
-	{
-	  if (digitMask & mask)
-	    mainDigit[j] = ( i == 7 ? 0x0f : 0);
-	}
-	
-	if (blinkMask & 0x100)
-	  wday_mask = (i == 7 ? 3 : 0);
+        uint8_t digitMask = blinkMask & 0xff;
+        for (uint8_t j = 0, mask = 0x80; j < 4; ++j, mask >>= 1)
+        {
+          if (digitMask & mask)
+            mainDigit[j] = ( i == 7 ? 0x0f : 0);
+        }
+        
+        if (blinkMask & 0x100)
+          wday_mask = (i == 7 ? 3 : 0);
       }
       
       // day-of-week on 0 and 1, Digit 0 at 3, space at 7
@@ -338,7 +340,7 @@ static void __privateRender(const uint8_t secondaryMode)
 
     for(uint8_t j = 0, column_mask = 1; j < 8; ++j, column_mask <<= 1)
       if (segmentDigits[j] & row_mask)
-	data[3] |= column_mask;
+        data[3] |= column_mask;
     
     if (invertionMode == INVERTED)
     {

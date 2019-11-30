@@ -27,6 +27,7 @@ enum MAX7219_registers
 };
 
 static uint8_t nrPanels = 0;
+static uint8_t brightness = 4;
 
 static void MAX7219_WriteAll( uint8_t reg, uint8_t data)
 {
@@ -61,10 +62,12 @@ void InitializePanels(uint8_t numPanels)
   MAX7219_WriteAll( MAX7219_DECODE_MODE, 0); // No decode.
   MAX7219_WriteAll( MAX7219_SCANLIMIT  , 7); // Scan all rows
   MAX7219_WriteAll( MAX7219_SHUTDOWN   , 1); // Enable panel
+  MAX7219_WriteAll( MAX7219_INTENSITY, brightness);
 }
 
 void SetBrightness(uint8_t level)
 {
+  brightness = level;
   MAX7219_WriteAll( MAX7219_INTENSITY  , level);
 }
 
