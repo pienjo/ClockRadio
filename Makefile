@@ -12,7 +12,10 @@ CURRENT_DIR = $(shell pwd)
 # PORT=/dev/ttyUSB0
 
 # For UsbTiny ISP
-AVRDUDE_FLAGS = -c usbtiny
+# AVRDUDE_FLAGS = -c usbtiny
+
+# for Avr ISP mkII
+AVRDUDE_FLAGS = -c avrisp2
 
 SOURCES= bitmap.c font.c main.c Panels.c Renderer.c DS1307.c 7Segment.c i2c.c SI4702.c longpress.c settings.c Timefuncs.c BCDFuncs.c
 A_SOURCES = 
